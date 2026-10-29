@@ -57,6 +57,40 @@ The reply's ctrl/func bytes are not checked. Some handlers first refuse with
 Builder `0x5506c0`: `AA 55 80 <addr> 03 1E 01 <pct> <sum hi> <sum lo>`.
 The dialog (IDD 191) validates the input with `DDV_MinMaxByte(0, 100)`.
 
+## Running info (01/81)
+
+Field layout as in `decode_running_info`. EzExplorer gives names for two of the fields.
+
+Work mode (map filled at `0x483632`): 0 Wait, 1 Normal, 2 Fault, 3 Permanent Fault.
+
+Error code, a 32-bit big-endian bitmask (tested bit by bit in `0x425b00`):
+
+| Bit | Error | Bit | Error |
+|---|---|---|---|
+| 0 | GFCI Device Failure | 15 | PV Over Voltage |
+| 1 | AC HCT Failure | 16 | External Fan Failure |
+| 2 | TBD | 17 | Vac Failure |
+| 3 | DCI Consistency Failure | 18 | Isolation Failure |
+| 4 | GFCI Consistency Failure | 19 | DC Injection High |
+| 9 | Utility Loss | 22 | Fac Consistency Failure |
+| 10 | Ground I Failure | 23 | Vac Consistency Failure |
+| 11 | DC Bus High | 25 | Relay Check Failure |
+| 12 | Internal Fan Failure | 29 | Fac Failure |
+| 13 | Over Temperature | 30 | EEPROM R/W Failure |
+| 14 | Auto Test Failure | 31 | Internal Communication Failure |
+
+Data bytes 32–43, between the hour counter and today's energy, are labelled as last-fault
+values in both EzExplorer and GoodWeUSBLogger: temperature, PV1 V, PV2 V, line V, line Hz
+and GFCI. The 2023 GW3600-DS capture (3042 records) doesn't fit those labels:
+
+| Bytes | Observed |
+|---|---|
+| 32–33 | always `0x0010` |
+| 34–35 | `0x0800` only in morning Wait, else 0 |
+| 36–39 | always 0 |
+| 40–41 | changes every record; ≈ PV1 V in Wait, ~360 V while producing (÷10): DC bus voltage |
+| 42–43 | alternates 0 / 20 between records |
+
 ## Not yet known
 
 - Whether the GW3600-DS firmware implements `03 1E` or answers NAK. EzExplorer covers
