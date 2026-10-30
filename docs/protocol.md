@@ -91,11 +91,21 @@ and GFCI. The 2023 GW3600-DS capture (3042 records) doesn't fit those labels:
 | 40–41 | changes every record; ≈ PV1 V in Wait, ~360 V while producing (÷10): DC bus voltage |
 | 42–43 | alternates 0 / 20 between records |
 
+### Real power adjust: verified on the GW3600-DS (2026-10-30, over USB)
+
+The inverter ACKs `03 1E` (`AA 55 80 11 03 1E 01 64 02 16` → `AA 55 11 80 03 9E 01 06 02 38`)
+and limits output to the given % of rated power:
+
+| Setting | AC output |
+|---|---|
+| 100 % (before) | 268–278 W |
+| 5 % | 185–189 W from the next poll (≤ 10 s); PV2 current to 0 A |
+| 100 % (restored) | 359 W at once |
+
+A 10 % test earlier was inconclusive: production (~290 W) stayed below the 360 W limit.
+
 ## Not yet known
 
-- Whether `03 1E` actually limits output. The GW3600-DS ACKs it (2026-10-30, over USB:
-  `AA 55 80 11 03 1E 01 64 02 16` → `AA 55 11 80 03 9E 01 06 02 38`), and production
-  carried on normally at 100 %, but a lower limit hasn't been tried yet.
 - Whether the limit persists across restarts, and whether every write wears flash. Don't
   send it every poll; send only on change until this is known.
 - The meaning of the `03 28` function-switch bits; it may gate features such as power
