@@ -93,8 +93,9 @@ and GFCI. The 2023 GW3600-DS capture (3042 records) doesn't fit those labels:
 
 ## Not yet known
 
-- Whether the GW3600-DS firmware implements `03 1E` or answers NAK. EzExplorer covers
-  many models.
+- Whether `03 1E` actually limits output. The GW3600-DS ACKs it (2026-10-30, over USB:
+  `AA 55 80 11 03 1E 01 64 02 16` → `AA 55 11 80 03 9E 01 06 02 38`), and production
+  carried on normally at 100 %, but a lower limit hasn't been tried yet.
 - Whether the limit persists across restarts, and whether every write wears flash. Don't
   send it every poll; send only on change until this is known.
 - The meaning of the `03 28` function-switch bits; it may gate features such as power
