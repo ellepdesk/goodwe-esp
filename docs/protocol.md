@@ -79,6 +79,10 @@ Error code, a 32-bit big-endian bitmask (tested bit by bit in `0x425b00`):
 | 13 | Over Temperature | 30 | EEPROM R/W Failure |
 | 14 | Auto Test Failure | 31 | Internal Communication Failure |
 
+GoodWe's protocol PDF (Table 3-7) has the same table except bit 12 "Internal Version
+Unmatch" (EzExplorer: Internal Fan Failure) and bit 16 "Fan Failure" (EzExplorer: External
+Fan Failure). The PDF's Work Mode table (3-6) didn't survive text extraction.
+
 Data bytes 32–43, between the hour counter and today's energy, are labelled as last-fault
 values in both EzExplorer and GoodWeUSBLogger: temperature, PV1 V, PV2 V, line V, line Hz
 and GFCI. The 2023 GW3600-DS capture (3042 records) doesn't fit those labels:
@@ -109,11 +113,13 @@ compared at 100 % and 50 %: only the live measurements in running info changed.
 
 ## Read replies (GW3600-DS, firmware V1.16)
 
+Layouts per GoodWe's "Inverter.VS.EzFamily PROTOCOL V1.1" (in the GoodWeUSBLogger repo), Tables 3-8 and 3-9.
+
 | Read | Reply |
 |---|---|
-| `01 00` | 23 bytes `00 01 02 03 04 07 0a 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1c 1f 20`; looks like a list of codes, but `1e`, which works, is missing |
-| `01 02` | firmware `V1.16` (5), model `GW3600-DS` padded (26), serial (16), rating `3600` (4), 12 × `00`, `14` |
-| `01 03` | 6 × u16 BE: 1500, 30, 1840, 2530, 4803, 5097. Read as the `02 06` parameters: PV start 150.0 V, start delay 30 s, Vac 184.0–253.0 V, Fac 48.03–50.97 Hz (field names not traced) |
+| `01 00` | 23 bytes `00 01 02 03 04 07 0a 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1c 1f 20`: the running-info data indexes (PDF Table 3-3) this model fills. Missing are exactly the L2/L3 fields `05 06 08 09 0b 0c 1a 1b 1d 1e` of a single-phase unit. |
+| `01 02` | firmware `V1.16` (5), model `GW3600-DS` (10), manufacturer, blank here (16), serial (16), nominal PV voltage `3600` = 360.0 V (4), internal version, all `00` (12), safety country `0x14` (1) |
+| `01 03` | 6 × u16 BE: 1500, 30, 1840, 2530, 4803, 5097 = PV start 150.0 V, start delay 30 s, Vac 184.0–253.0 V, Fac 48.03–50.97 Hz |
 
 ## Not yet known
 
