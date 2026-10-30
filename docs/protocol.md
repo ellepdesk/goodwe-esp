@@ -104,6 +104,17 @@ and limits output to the given % of rated power:
 
 A 10 % test earlier was inconclusive: production (~290 W) stayed below the 360 W limit.
 
+The limit can't be read back. Replies to `01 00`, `01 01`, `01 02` and `01 03` were
+compared at 100 % and 50 %: only the live measurements in running info changed.
+
+## Read replies (GW3600-DS, firmware V1.16)
+
+| Read | Reply |
+|---|---|
+| `01 00` | 23 bytes `00 01 02 03 04 07 0a 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1c 1f 20`; looks like a list of codes, but `1e`, which works, is missing |
+| `01 02` | firmware `V1.16` (5), model `GW3600-DS` padded (26), serial (16), rating `3600` (4), 12 × `00`, `14` |
+| `01 03` | 6 × u16 BE: 1500, 30, 1840, 2530, 4803, 5097. Read as the `02 06` parameters: PV start 150.0 V, start delay 30 s, Vac 184.0–253.0 V, Fac 48.03–50.97 Hz (field names not traced) |
+
 ## Not yet known
 
 - Whether the limit persists across restarts, and whether every write wears flash. Don't
