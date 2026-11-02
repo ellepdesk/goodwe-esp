@@ -41,7 +41,7 @@ and logs. The C3 has no USB OTG controller, so it drops out.
    solder jumper (often marked "IN-OUT" or "USB-OTG") that connects it to the 5 V rail.
    Close it, then power the board through the COM port from a 5 V supply at the inverter,
    and measure 5 V on the native port's VBUS before plugging in the inverter. Cable: USB-C
-   (host) to whatever the inverter's port is.
+   to USB-B ("printer cable"); the inverter's port is USB-B.
 3. **USB transport.** ESP-IDF's raw `usb_host` API, which ships with the current Arduino
    core (2.0.17, IDF 4.4), so no HID driver is needed: open the device, claim interface 0,
    keep an IN transfer on the interrupt endpoint, and send `CC 99 <len>` + frame, padded to
