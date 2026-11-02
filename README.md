@@ -54,9 +54,7 @@ and logs. The C3 has no USB OTG controller, so it drops out.
 5. **Logs and updates.** Over the COM port (serial console and flashing) while on the
    bench. Once mounted, use OTA, plus an MQTT log topic so the COM port needn't be
    reachable.
-6. **Mounting.** The board sits outside the inverter at the capped USB port. The A11
-   needed an external antenna, so prefer a module with a u.FL connector (WROOM-1U) or
-   check the signal first. Seal the open port and the board against the weather.
+6. **Mounting.** The board sits outside the inverter at the capped USB port. Seal the open port and the board against the weather.
 
 ## Fallback: A11 header sniffer
 
