@@ -1,6 +1,6 @@
 # goodwe-esp
 
-A XIAO ESP32-S3 on the GoodWe GW3600-DS's external USB port, replacing what the built-in
+An ESP32-S3 on the GoodWe GW3600-DS's external USB port, replacing what the built-in
 HF-A11 WiFi module does: it polls the inverter and publishes to Home Assistant over MQTT,
 with power limiting. No DNS spoof, no `goodwe_logging_proxy`, and the inverter stays closed.
 
@@ -27,17 +27,21 @@ pio test -e native     # protocol library tests
 
 ## Plan: USB host on the S3
 
-The S3 has a USB OTG controller (the C3 doesn't, so the C3 drops out). Its USB-C port runs
-as a USB host to the inverter's HID device `0084:0041`.
+Board: a dual-USB ESP32-S3 (DevKitC-1 layout). Its native USB-C port, the one marked "USB"
+or "OTG", runs as a USB host to the inverter's HID device `0084:0041`. The other USB-C
+port, marked "COM" or "UART", has a USB-serial bridge and stays free for power, flashing
+and logs. The C3 has no USB OTG controller, so it drops out.
 
 1. **Descriptors.** Record `lsusb -v -d 0084:0041` from Linux (Orange Pi or Septimus):
    speed (low or full), and whether there is an interrupt OUT endpoint or output reports
    go as `SET_REPORT` control transfers. Known so far: 8-byte input reports, 72-byte output
    reports, no report IDs.
-2. **Power.** As host the S3 must put 5 V on VBUS; the inverter's port supplies none.
-   Feed the XIAO's 5V pin from a supply at the inverter and check, with the schematic and
-   a meter, that it reaches the USB-C VBUS. If it doesn't, use an OTG Y-cable that injects
-   5 V. Cable: USB-C (host) to whatever the inverter's port is.
+2. **Power.** As host the S3 must put 5 V on VBUS; the inverter's port supplies none. On
+   these boards the native port's VBUS is usually isolated by a diode; many clones have a
+   solder jumper (often marked "IN-OUT" or "USB-OTG") that connects it to the 5 V rail.
+   Close it, then power the board through the COM port from a 5 V supply at the inverter,
+   and measure 5 V on the native port's VBUS before plugging in the inverter. Cable: USB-C
+   (host) to whatever the inverter's port is.
 3. **USB transport.** ESP-IDF's raw `usb_host` API, which ships with the current Arduino
    core (2.0.17, IDF 4.4), so no HID driver is needed: open the device, claim interface 0,
    keep an IN transfer on the interrupt endpoint, and send `CC 99 <len>` + frame, padded to
@@ -47,12 +51,12 @@ as a USB host to the inverter's HID device `0084:0041`.
 4. **Firmware.** The transport feeds `aa55::Master`; `lib/goodwe_ha` provides discovery,
    state and the power limit, exactly as in `goodwe-mqtt`. Add WiFi, an MQTT client
    (PubSubClient) and ArduinoOTA.
-5. **Logs and updates.** The USB port is busy, so logging goes over WiFi (an MQTT log
-   topic), with UART0 on the XIAO's TX/RX pins and a USB-UART adapter as fallback. Flash
-   over USB once, before plugging into the inverter, then use OTA.
-6. **Mounting.** The XIAO sits outside the inverter at the capped USB port. Use its u.FL
-   antenna, since the A11 needed an external one too. Seal the open port and the board
-   against the weather.
+5. **Logs and updates.** Over the COM port (serial console and flashing) while on the
+   bench. Once mounted, use OTA, plus an MQTT log topic so the COM port needn't be
+   reachable.
+6. **Mounting.** The board sits outside the inverter at the capped USB port. The A11
+   needed an external antenna, so prefer a module with a u.FL connector (WROOM-1U) or
+   check the signal first. Seal the open port and the board against the weather.
 
 ## Fallback: A11 header sniffer
 
