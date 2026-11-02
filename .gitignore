@@ -1,3 +1,5 @@
 .pio/
 .vscode/
 tools/host/goodwe
+tools/host/goodwe-mqtt
+__pycache__/

@@ -85,6 +85,9 @@ struct RunningInfo {
     uint32_t error_code;
     float e_total;
     uint32_t h_total;
+    // Data bytes 40-41, labelled a last-fault value in GoodWe's docs, track the PV voltage
+    // while waiting and sit near 360 V while feeding in: the DC bus (docs/protocol.md).
+    float vbus;
     float e_day;
 };
 

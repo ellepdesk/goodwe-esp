@@ -9,8 +9,14 @@ which removes the DNS spoof and the `goodwe_logging_proxy` container.
 
 ## Status
 
-Phase 3: a receive-only sniffer. It logs both directions as raw hex plus decoded AA55
-frames over USB serial.
+- **ESP firmware**: phase 3, a receive-only sniffer. It logs both directions as raw hex
+  plus decoded AA55 frames over USB serial.
+- **Linux**: [`tools/host`](tools/host/README.md) has a CLI and `goodwe-mqtt`, a service
+  that does what the finished firmware will do (Home Assistant over MQTT, power limit)
+  from any Linux board on the inverter's USB port. No need to open the inverter.
+
+`lib/aa55` (protocol, bus master) and `lib/goodwe_ha` (HA discovery, power-limit logic)
+are shared by both.
 
 ```
 pio test -e native     # protocol library tests

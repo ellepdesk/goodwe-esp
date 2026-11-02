@@ -85,6 +85,7 @@ void test_decode_captured_running_info() {
     TEST_ASSERT_EQUAL(0, info.error_code);
     TEST_ASSERT_EQUAL_FLOAT(18692.1f, info.e_total);
     TEST_ASSERT_EQUAL(32764, info.h_total);
+    TEST_ASSERT_EQUAL_FLOAT(364.1f, info.vbus);
     TEST_ASSERT_EQUAL_FLOAT(3.5f, info.e_day);
 }
 

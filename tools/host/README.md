@@ -1,7 +1,13 @@
-# Host CLI
+# Host tools
 
-Runs the same `lib/aa55` code as the ESP firmware (framing, registration, polling,
-execute commands) on Linux or macOS. It talks to the inverter over:
+Two programs running the same `lib/aa55` code as the ESP firmware (framing, registration,
+polling, execute commands) on Linux or macOS:
+
+- `goodwe`: CLI for sniffing, monitoring and one-off commands.
+- `goodwe-mqtt`: service that publishes to Home Assistant, the Linux counterpart of the
+  ESP firmware (see below).
+
+Both talk to the inverter over:
 
 - **USB HID**: the inverter's own USB port. Frames go out as `CC 99 <len>` + AA55 in an
   output report, per GoodWeUSBLogger.
@@ -10,9 +16,9 @@ execute commands) on Linux or macOS. It talks to the inverter over:
 ## Build
 
 ```
-brew install hidapi                         # macOS
-sudo apt install libhidapi-dev pkg-config   # Debian/Ubuntu
-make
+brew install hidapi mosquitto                                 # macOS
+sudo apt install libhidapi-dev libmosquitto-dev pkg-config    # Debian/Ubuntu/Armbian
+make                # both; `make goodwe` needs only hidapi
 ```
 
 ## Use
@@ -39,16 +45,51 @@ Verified on a GW3600-DS from Ubuntu (kernel 7.0, hidraw), 2026-10-30:
   buffer comes back too: zeros or stale bytes from an earlier frame. The parser skips them.
 - **While the USB port is in use, the WiFi module stops uploading**, so the logging proxy
   and Home Assistant get no data until it is unplugged.
-- Linux needs access to the hidraw node, e.g. `/etc/udev/rules.d/99-goodwe.rules`:
-  `KERNEL=="hidraw*", ATTRS{idVendor}=="0084", ATTRS{idProduct}=="0041", MODE="0660", GROUP="plugdev"`
-  then `sudo udevadm control --reload && sudo udevadm trigger`.
+- Linux needs access to the hidraw node: copy [99-goodwe.rules](99-goodwe.rules) to
+  `/etc/udev/rules.d/`, then `sudo udevadm control --reload && sudo udevadm trigger`.
 - Without `libhidapi-dev` (or root), build hidapi's hidraw backend from source; it only
   needs `libudev-dev`:
   ```
   gcc -O2 -c -I hidapi/hidapi hidapi/linux/hid.c -o hid.o
   g++ -O2 -std=c++17 -I../../lib/aa55/src -I hidapi/hidapi -DAA55_BAUD_DEFAULT=9600 \
-      -o goodwe goodwe.cpp ../../lib/aa55/src/*.cpp hid.o -ludev
+      -o goodwe goodwe.cpp transport.cpp ../../lib/aa55/src/*.cpp hid.o -ludev
   ```
+
+## goodwe-mqtt
+
+Registers the inverter, polls it every 10 s and publishes to MQTT with Home Assistant
+discovery. Topics, unique IDs and state fields are the same as goodwe_logging_proxy's
+(shared code in `lib/goodwe_ha`), so HA keeps the existing entities and their history when
+this takes over from the proxy.
+
+```
+./goodwe-mqtt --hid --broker 192.168.1.10                  # sensors only
+./goodwe-mqtt --hid --broker 192.168.1.10 --allow-control  # + Power Limit entity
+```
+
+- **Power Limit** (`--allow-control`): a number entity, 0–100 % of rated power, sent with
+  execute `03 1E`. The inverter can't report its limit, so the service re-sends the last
+  setting (kept as a retained MQTT message) after every registration and each time the
+  inverter goes back to Normal, e.g. in the morning. It only sends in Normal mode, the only
+  mode this was tested in, and gives up after 3 failed attempts per trigger. Without
+  `--allow-control` the entity is removed and nothing is ever sent.
+- **Night**: the DS switches off without PV, and its USB device disappears with it. The
+  service logs that once and reopens the port when the inverter comes back. Sensors go
+  unavailable after 10 minutes (`expire_after`), as with the proxy.
+- **The WiFi module stops uploading while USB is in use**, so this replaces the proxy rather
+  than running alongside it. To roll back, unplug the USB cable.
+
+### Install (Debian/Armbian)
+
+```
+make goodwe-mqtt
+sudo install goodwe-mqtt /usr/local/bin/
+sudo cp 99-goodwe.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
+echo 'GOODWE_MQTT_ARGS=--hid --broker 192.168.1.10 --allow-control' | sudo tee /etc/default/goodwe-mqtt
+sudo cp goodwe-mqtt.service /etc/systemd/system/
+sudo systemctl enable --now goodwe-mqtt
+journalctl -fu goodwe-mqtt
+```
 
 ## Without hardware
 
@@ -58,4 +99,5 @@ Verified on a GW3600-DS from Ubuntu (kernel 7.0, hidraw), 2026-10-30:
 python3 fake_inverter.py &          # prints e.g. /dev/ttys004
 ./goodwe --serial /dev/ttys004 --poll 2 monitor
 python3 fake_inverter.py --nak &    # answer execute commands with NAK
+./goodwe-mqtt --serial /dev/ttys004 --poll 2 --allow-control   # needs a broker on localhost
 ```

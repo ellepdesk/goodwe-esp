@@ -82,6 +82,7 @@ bool decode_running_info(const uint8_t* d, size_t len, RunningInfo& out) {
     out.error_code = be32(d + 20);
     out.e_total = be32(d + 24) / 10.0f;
     out.h_total = be32(d + 28);
+    out.vbus = be16(d + 40) / 10.0f;
     out.e_day = be16(d + 44) / 10.0f;
     return true;
 }

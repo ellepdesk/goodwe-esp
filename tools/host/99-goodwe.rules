@@ -1,0 +1,2 @@
+# GoodWe inverter USB port (HID): readable by the plugdev group.
+KERNEL=="hidraw*", ATTRS{idVendor}=="0084", ATTRS{idProduct}=="0041", MODE="0660", GROUP="plugdev"
