@@ -62,8 +62,8 @@ and logs. The C3 has no USB OTG controller, so it drops out.
 - USB-C to USB-B cable ("printer cable"), native port to the inverter
 - 5 V USB power supply at the inverter, into the COM port
 - M25×1.5 cable gland for the open USB port. Check the cap's thread first. Get one that
-  seals a 4–5 mm cable (reducing insert) and either passes the moulded USB-B plug or is
-  split-seal.
+  seals a 4–5 mm cable (reducing insert) and whose bore passes the USB-C plug: the
+  USB-B end stays in the inverter's socket, so thread the cable C end first from that side.
 - Weatherproof enclosure for the board
 
 ## Fallback: A11 header sniffer
