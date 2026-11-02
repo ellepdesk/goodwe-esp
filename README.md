@@ -56,6 +56,16 @@ and logs. The C3 has no USB OTG controller, so it drops out.
    reachable.
 6. **Mounting.** The board sits outside the inverter at the capped USB port. Seal the open port and the board against the weather.
 
+### Shopping list
+
+- Dual-USB ESP32-S3 board (DevKitC-1 layout: native "USB/OTG" port plus "COM" port)
+- USB-C to USB-B cable ("printer cable"), native port to the inverter
+- 5 V USB power supply at the inverter, into the COM port
+- M25×1.5 cable gland for the open USB port. Check the cap's thread first. Get one that
+  seals a 4–5 mm cable (reducing insert) and either passes the moulded USB-B plug or is
+  split-seal.
+- Weatherproof enclosure for the board
+
 ## Fallback: A11 header sniffer
 
 `src/main.cpp` listens passively on the A11's UART. It's only needed if the USB route
