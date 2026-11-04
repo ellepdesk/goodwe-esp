@@ -15,22 +15,21 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "aa55.h"
+#include "bridge.h"
 #include "ha.h"
-#include "master.h"
 #include "transport.h"
 
 namespace {
 
 std::atomic<bool> g_stop{false};
 std::atomic<int> g_connects{0};
-std::mutex g_command_mutex;
-// Guarded by g_command_mutex.
-std::string g_command_topic, g_watts_topic, g_stop_topic, g_start_topic;
-std::string g_command, g_watts;
-bool g_has_command = false, g_has_watts = false;
-uint8_t g_button = 0;  // aa55::kStop or kStart, 0 when none
+// Messages arrive on the mosquitto thread; the bridge runs on the main thread.
+std::mutex g_messages_mutex;
+std::vector<std::pair<std::string, std::string>> g_messages;
 
 void log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void log(const char* fmt, ...) {
@@ -57,24 +56,9 @@ void on_disconnect(mosquitto*, void*, int rc) {
 }
 
 void on_message(mosquitto*, void*, const mosquitto_message* m) {
-    std::lock_guard<std::mutex> lock(g_command_mutex);
-    std::string payload(static_cast<const char*>(m->payload), size_t(m->payloadlen));
-    if (g_command_topic == m->topic) {
-        g_command = payload;
-        g_has_command = true;
-    } else if (g_watts_topic == m->topic) {
-        g_watts = payload;
-        g_has_watts = true;
-    } else if (g_stop_topic == m->topic) {
-        g_button = aa55::kStop;
-    } else if (g_start_topic == m->topic) {
-        g_button = aa55::kStart;
-    }
-}
-
-void publish(mosquitto* mq, const std::string& topic, const std::string& payload, bool retain) {
-    mosquitto_publish(mq, nullptr, topic.c_str(), int(payload.size()), payload.data(), 0,
-                      retain);
+    std::lock_guard<std::mutex> lock(g_messages_mutex);
+    g_messages.push_back(
+        {m->topic, std::string(static_cast<const char*>(m->payload), size_t(m->payloadlen))});
 }
 
 // Sleeps up to seconds, waking early on SIGTERM/SIGINT.
@@ -190,9 +174,23 @@ int main(int argc, char** argv) {
                                     mosquitto_strerror(rc));
     mosquitto_loop_start(mq);
 
-    // Outlives the port: the wanted limit must survive the inverter's nightly shutdown.
-    ha::PowerLimit limit;
+    Transport* inverter = nullptr;
+    ha::Bridge::Io io;
+    io.publish = [mq](const std::string& topic, const std::string& payload, bool retain) {
+        mosquitto_publish(mq, nullptr, topic.c_str(), int(payload.size()), payload.data(), 0,
+                          retain);
+    };
+    io.subscribe = [mq](const std::string& topic) {
+        mosquitto_subscribe(mq, nullptr, topic.c_str(), 1);
+    };
+    io.send = [&](const uint8_t* f, size_t n) {
+        if (raw) hexdump("tx", f, n);
+        if (inverter && !inverter->write(f, n)) log("write failed");
+    };
+    io.log = [](const char* line) { log("%s", line); };
+    ha::Bridge bridge(config, io, address, uint32_t(poll_s) * 1000);
     std::string last_error;
+    int connects = 0;
 
     while (!g_stop) {
         std::string error;
@@ -206,133 +204,31 @@ int main(int argc, char** argv) {
             continue;
         }
         last_error.clear();
-        log("inverter port open");
-
-        std::string serial, firmware, details;
-        int announced = -1;
-        aa55::Master::Callbacks cb;
-        cb.send = [&](const uint8_t* f, size_t n) {
-            if (raw) hexdump("tx", f, n);
-            if (!t->write(f, n)) log("write failed");
-        };
-        cb.on_registered = [&](const char* s) {
-            log("registered inverter %s at address 0x%02X", s, address);
-            serial = s;
-            firmware.clear();
-            details.clear();
-            announced = -1;
-            limit.on_registered();
-        };
-        cb.on_details = [&](const aa55::IdInfo* id, const aa55::Settings* st) {
-            log("firmware %s, settings %s", id ? id->firmware : "not read",
-                st ? "read" : "not read");
-            details = ha::details_json(id, st);
-            if (id) firmware = id->firmware;
-            announced = -1;  // re-announce with sw_version and the details
-        };
-        cb.on_info = [&](const aa55::RunningInfo& info) {
-            publish(mq, ha::state_topic(config, serial.c_str()),
-                    ha::state_json(serial.c_str(), info), false);
-            limit.on_info(info);
-        };
-        cb.on_execute = [&](uint8_t func, bool ack) {
-            if (func != aa55::kRealPowerAdjust) {
-                log("%s: %s", func == aa55::kStop ? "stop" : "start",
-                    ack ? "ACK" : "NAK or no reply");
-                return;
-            }
-            limit.on_result(ack);
-            if (ack) {
-                int rated = ha::rated_power(config, serial.c_str());
-                log("power limit %d%% applied", limit.applied());
-                publish(mq, ha::power_limit_state_topic(config, serial.c_str()),
-                        std::to_string(limit.applied()), true);
-                if (rated > 0)
-                    publish(mq, ha::power_limit_watts_state_topic(config, serial.c_str()),
-                            std::to_string(limit.applied() * rated / 100), true);
-            } else {
-                log("power limit not acknowledged");
-            }
-        };
-        aa55::Master master(cb, address, uint32_t(poll_s) * 1000);
+        inverter = t.get();
+        bridge.port_opened();
 
         uint8_t buf[64];
         while (!g_stop) {
             int n = t->read(buf, sizeof buf, 50);
-            if (n < 0) {
-                log("inverter port closed");
-                break;
-            }
+            if (n < 0) break;
             if (raw && n > 0) hexdump("rx", buf, size_t(n));
             uint32_t now = now_ms();
-            for (int i = 0; i < n; i++) master.feed(buf[i], now);
-            master.tick(now);
+            bridge.feed(buf, size_t(n > 0 ? n : 0), now);
 
-            // (Re)announce after registration and after every broker reconnect; the
-            // broker may have restarted without persistence.
-            int connects = g_connects;
-            if (!serial.empty() && connects != announced) {
-                for (const ha::Message& m :
-                     ha::discovery(config, serial.c_str(), firmware.c_str()))
-                    publish(mq, m.topic, m.payload, m.retain);
-                if (!details.empty())
-                    publish(mq, ha::details_topic(config, serial.c_str()), details, true);
-                if (config.power_limit) {
-                    std::string topic = ha::power_limit_command_topic(config, serial.c_str());
-                    std::string watts = ha::power_limit_watts_command_topic(config, serial.c_str());
-                    std::string stop = ha::stop_command_topic(config, serial.c_str());
-                    std::string start = ha::start_command_topic(config, serial.c_str());
-                    {
-                        std::lock_guard<std::mutex> lock(g_command_mutex);
-                        g_command_topic = topic;
-                        g_watts_topic = watts;
-                        g_stop_topic = stop;
-                        g_start_topic = start;
-                    }
-                    for (const std::string& t : {topic, watts, stop, start})
-                        mosquitto_subscribe(mq, nullptr, t.c_str(), 1);
-                }
-                announced = connects;
+            if (g_connects != connects) {
+                connects = g_connects;
+                bridge.mqtt_connected();
             }
-
-            std::string command, watts;
-            bool has_command = false, has_watts = false;
-            uint8_t button = 0;
+            std::vector<std::pair<std::string, std::string>> messages;
             {
-                std::lock_guard<std::mutex> lock(g_command_mutex);
-                if (!master.exec_pending()) std::swap(button, g_button);
-                std::swap(has_command, g_has_command);
-                command.swap(g_command);
-                std::swap(has_watts, g_has_watts);
-                watts.swap(g_watts);
+                std::lock_guard<std::mutex> lock(g_messages_mutex);
+                messages.swap(g_messages);
             }
-            if (has_watts) {
-                // Republished as the retained percentage command, the one setting that is
-                // restored after a restart; it comes back to us through the subscription.
-                int pct;
-                if (ha::watts_to_percent(watts.c_str(), ha::rated_power(config, serial.c_str()),
-                                         pct)) {
-                    log("power limit %s W requested", watts.c_str());
-                    publish(mq, ha::power_limit_command_topic(config, serial.c_str()),
-                            std::to_string(pct), true);
-                } else {
-                    log("ignoring power limit command '%s W'", watts.c_str());
-                }
-            }
-            if (has_command) {
-                if (limit.command(command.c_str()))
-                    log("power limit %d%% requested", limit.wanted());
-                else
-                    log("ignoring power limit command '%s'", command.c_str());
-            }
-            if (button) {
-                log("%s requested", button == aa55::kStop ? "stop" : "start");
-                master.execute(button, nullptr, 0);
-            }
-            uint8_t pct;
-            if (!master.exec_pending() && limit.due(pct))
-                master.execute(aa55::kRealPowerAdjust, &pct, 1);
+            for (const auto& m : messages) bridge.message(m.first, m.second);
+            bridge.tick(now);
         }
+        bridge.port_closed();
+        inverter = nullptr;
         if (!g_stop) nap(2);
     }
 

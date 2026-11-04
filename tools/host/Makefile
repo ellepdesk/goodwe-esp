@@ -21,8 +21,8 @@ all: goodwe goodwe-mqtt
 goodwe: goodwe.cpp $(DEPS)
 	$(CXX) $(CXXFLAGS) -o $@ goodwe.cpp transport.cpp $(AA55) $(HID_LIBS)
 
-goodwe-mqtt: goodwe-mqtt.cpp $(DEPS) $(HA)/ha.cpp $(HA)/ha.h
-	$(CXX) $(CXXFLAGS) -o $@ goodwe-mqtt.cpp transport.cpp $(AA55) $(HA)/ha.cpp $(HID_LIBS) -lmosquitto -lpthread
+goodwe-mqtt: goodwe-mqtt.cpp $(DEPS) $(HA)/ha.cpp $(HA)/ha.h $(HA)/bridge.cpp $(HA)/bridge.h
+	$(CXX) $(CXXFLAGS) -o $@ goodwe-mqtt.cpp transport.cpp $(AA55) $(HA)/ha.cpp $(HA)/bridge.cpp $(HID_LIBS) -lmosquitto -lpthread
 
 clean:
 	rm -f goodwe goodwe-mqtt
