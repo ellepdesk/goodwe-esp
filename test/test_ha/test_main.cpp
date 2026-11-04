@@ -125,6 +125,11 @@ void test_detail_sensors() {
     TEST_ASSERT_NOT_NULL(strstr(p, "\"entity_category\":\"diagnostic\""));
     TEST_ASSERT_NOT_NULL(strstr(p, "\"sw_version\":\"V1.16\""));
     TEST_ASSERT_NULL(strstr(p, "expire_after"));
+    TEST_ASSERT_NULL(strstr(p, "suggested_display_precision"));
+    TEST_ASSERT_EQUAL_STRING("homeassistant/sensor/goodwe_00000DSU00000000/fac_min/config",
+                             m[22].topic.c_str());
+    TEST_ASSERT_NOT_NULL(strstr(m[22].payload.c_str(), "\"suggested_display_precision\":2"));
+    TEST_ASSERT_NOT_NULL(strstr(m[6].payload.c_str(), "\"suggested_display_precision\":2"));
     TEST_ASSERT_NOT_NULL(strstr(m[0].payload.c_str(), "\"sw_version\":\"V1.16\""));
     TEST_ASSERT_NULL(strstr(discovery(Config(), kSerial)[0].payload.c_str(), "sw_version"));
 

@@ -17,6 +17,8 @@ struct Sensor {
     const char* state_class;
     const char* entity_category;
     const char* icon;
+    // suggested_display_precision; 0 leaves HA's default, which is whole Hz for frequency.
+    int precision;
 };
 
 // Same list, names and order as goodwe_logging_proxy's goodwemqttclient.py.
@@ -27,7 +29,7 @@ const Sensor kSensors[] = {
     {"current_pv2", "DC Current String 2", "A", "current", "measurement", nullptr, nullptr},
     {"voltage_ac", "AC Voltage", "V", "voltage", "measurement", nullptr, nullptr},
     {"current_ac", "AC Current", "A", "current", "measurement", nullptr, nullptr},
-    {"freq_ac", "AC Frequency", "Hz", "frequency", "measurement", nullptr, nullptr},
+    {"freq_ac", "AC Frequency", "Hz", "frequency", "measurement", nullptr, nullptr, 2},
     {"power_ac", "AC Power", "W", "power", "measurement", nullptr, nullptr},
     {"temperature", "Inverter Temperature", "°C", "temperature", "measurement", nullptr,
      nullptr},
@@ -50,8 +52,8 @@ const Sensor kDetailSensors[] = {
     {"start_delay", "Start Delay", "s", "duration", nullptr, "diagnostic", nullptr},
     {"vac_min", "Grid Voltage Min", "V", "voltage", nullptr, "diagnostic", nullptr},
     {"vac_max", "Grid Voltage Max", "V", "voltage", nullptr, "diagnostic", nullptr},
-    {"fac_min", "Grid Frequency Min", "Hz", "frequency", nullptr, "diagnostic", nullptr},
-    {"fac_max", "Grid Frequency Max", "Hz", "frequency", nullptr, "diagnostic", nullptr},
+    {"fac_min", "Grid Frequency Min", "Hz", "frequency", nullptr, "diagnostic", nullptr, 2},
+    {"fac_max", "Grid Frequency Max", "Hz", "frequency", nullptr, "diagnostic", nullptr, 2},
 };
 
 constexpr int kExpireAfterS = 600;
@@ -184,6 +186,7 @@ std::string sensor_config(const Sensor& s, const char* serial, const std::string
     add_field(json, "state_class", s.state_class);
     add_field(json, "entity_category", s.entity_category);
     add_field(json, "icon", s.icon);
+    if (s.precision) json += format(",\"suggested_display_precision\":%d", s.precision);
     if (expire) json += format(",\"expire_after\":%d", kExpireAfterS);
     return json + "}";
 }
