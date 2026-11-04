@@ -50,7 +50,9 @@ and logs. The C3 has no USB OTG controller, so it drops out.
    the DS powers off at night and the device disappears with it.
 4. **Firmware.** The transport feeds `aa55::Master`; `lib/goodwe_ha` provides discovery,
    state and the power limit, exactly as in `goodwe-mqtt`. Add WiFi, an MQTT client
-   (PubSubClient) and ArduinoOTA.
+   (PubSubClient) and ArduinoOTA. Optional status LED (`lib/status_led`, `-DSTATUS_LED_PIN`, see
+   `platformio.ini`): orange while waiting, green in Normal, red on a fault or error bit,
+   off without data. The sniffer already drives it.
 5. **Logs and updates.** Over the COM port (serial console and flashing) while on the
    bench. Once mounted, use OTA, plus an MQTT log topic so the COM port needn't be
    reachable.

@@ -4,6 +4,13 @@
 #include <Arduino.h>
 #include <aa55.h>
 
+#ifdef STATUS_LED_PIN
+#include <status_led.h>
+#ifndef STATUS_LED_BRIGHTNESS
+#define STATUS_LED_BRIGHTNESS 32
+#endif
+#endif
+
 namespace {
 
 struct Tap {
@@ -19,6 +26,18 @@ Tap taps[] = {
     {"A11", SNIFF_A11_UART, {}, {}, 0, 0},
     {"INV", SNIFF_INV_UART, {}, {}, 0, 0},
 };
+
+#ifdef STATUS_LED_PIN
+status_led::Status led(STATUS_LED_BRIGHTNESS);
+status_led::Rgb led_shown{1, 1, 1};  // forces the first write
+
+void update_led() {
+    status_led::Rgb c = led.color(millis());
+    if (c.r == led_shown.r && c.g == led_shown.g && c.b == led_shown.b) return;
+    neopixelWrite(STATUS_LED_PIN, c.r, c.g, c.b);
+    led_shown = c;
+}
+#endif
 
 // Bytes go out in bursts; a pause this long ends a raw-dump line.
 constexpr uint32_t kIdleFlushMs = 20;
@@ -42,6 +61,9 @@ void log_frame(const Tap& t) {
                       info.vpv1, info.ipv1, info.vpv2, info.ipv2, info.vac, info.iac, info.fac,
                       info.pac, info.work_mode, info.temperature, (unsigned long)info.error_code,
                       info.e_day, info.e_total, (unsigned long)info.h_total);
+#ifdef STATUS_LED_PIN
+        led.on_info(info, millis());
+#endif
     }
 }
 
@@ -75,5 +97,8 @@ void setup() {
 
 void loop() {
     for (Tap& t : taps) poll(t);
+#ifdef STATUS_LED_PIN
+    update_led();
+#endif
     delay(1);
 }
