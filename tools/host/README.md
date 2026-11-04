@@ -41,6 +41,9 @@ Verified on a GW3600-DS from Ubuntu (kernel 7.0, hidraw), 2026-10-30:
 - The device is `0084:0041` ("HID USB 1.6"). The report descriptor has 8-byte input
   and 72-byte output reports, no report IDs. Writes work both padded (`--report-size 72`)
   and unpadded over hidraw; other platforms may need the padding.
+- Full speed, with a single interrupt IN endpoint (`0x81`, 32-byte packets) and no OUT
+  endpoint, so output reports go as `SET_REPORT` control transfers (2026-11-04, NanoPi
+  NEO3).
 - Replies arrive in 8-byte input reports. After the frame, the rest of the device's
   buffer comes back too: zeros or stale bytes from an earlier frame. The parser skips them.
 - **While the USB port is in use, the WiFi module stops uploading**, so the logging proxy
@@ -76,6 +79,11 @@ this takes over from the proxy.
 - **Night**: the DS switches off without PV, and its USB device disappears with it. The
   service logs that once and reopens the port when the inverter comes back. Sensors go
   unavailable after 10 minutes (`expire_after`), as with the proxy.
+- **Poll interval** (`--poll`, whole seconds, default 10): 1 s is the useful minimum; the
+  inverter refreshes AC power about once a second and answers a read in ~190 ms (see
+  [protocol.md](../../docs/protocol.md#polling-rate-gw3600-ds-over-usb-2026-11-04)). Each
+  poll updates 16 sensors in HA, so below a few seconds consider excluding most of them
+  from the recorder. Power-limit commands are sent right away, not on the next poll.
 - **The WiFi module stops uploading while USB is in use**, so this replaces the proxy rather
   than running alongside it. To roll back, unplug the USB cable.
 

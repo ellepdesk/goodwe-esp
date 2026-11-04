@@ -121,6 +121,22 @@ Layouts per GoodWe's "Inverter.VS.EzFamily PROTOCOL V1.1" (in the GoodWeUSBLogge
 | `01 02` | firmware `V1.16` (5), model `GW3600-DS` (10), manufacturer, blank here (16), serial (16), nominal PV voltage `3600` = 360.0 V (4), internal version, all `00` (12), safety country `0x14` (1) |
 | `01 03` | 6 × u16 BE: 1500, 30, 1840, 2530, 4803, 5097 = PV start 150.0 V, start delay 30 s, Vac 184.0–253.0 V, Fac 48.03–50.97 Hz |
 
+## Polling rate (GW3600-DS over USB, 2026-11-04)
+
+Measured by polling running info back to back (`--poll 0`, 122 reads in 30 s, no
+timeouts):
+
+- One read takes **~190 ms**, so about 5 reads/s at most. The first reply byte arrives
+  ~12 ms after the request; the rest is the 56-byte reply arriving in 8-byte input reports.
+- AC power changes about once a second (5–6 identical reads in a row). PV voltage changes
+  about every 0.75 s. Currents, AC voltage and frequency change on nearly every read, but
+  only by ±0.1 A or a few tenths of a volt, which looks like sampling noise. Daily
+  energy moves in 0.1 kWh steps.
+
+So polling faster than once a second adds no information. The WiFi module uploads every
+~11 s (or 8 minutes, depending on the server's interval reply), and `goodwe-mqtt` defaults
+to 10 s.
+
 ## Firmware updater (not traced)
 
 EzExplorer has a firmware flasher ("Update Program" in the Inverter menu; window "Flash",
