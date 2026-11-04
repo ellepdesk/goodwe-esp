@@ -15,15 +15,30 @@ and the A11 resumes: that is the rollback.
 - **Linux**: [`tools/host`](tools/host/README.md) has a CLI and `goodwe-mqtt`, a service
   that already does what the firmware will do, from any Linux board on the inverter's USB
   port. This proves the shared libraries on the real inverter first.
-- **ESP firmware**: only the phase-3 UART sniffer so far (below, now a fallback). The USB
-  host firmware is next.
+- **ESP firmware** (`src/usb`, env `s3-usb`): written and compiling, not yet run on
+  hardware (the board is on its way). The A11 sniffer (`src/sniffer`) remains as a
+  fallback.
 
-`lib/aa55` (protocol, bus master) and `lib/goodwe_ha` (HA discovery, power-limit logic)
-are shared by both.
+`lib/aa55` (protocol, bus master), `lib/goodwe_ha` (HA discovery, control entities, and
+`ha::Bridge`, which ties them to the inverter) and `lib/status_led` are shared by both, so
+the ESP firmware is only WiFi, MQTT, OTA and USB glue.
 
 ```
-pio test -e native     # protocol library tests
+pio test -e native     # library tests, including the bridge against a simulated inverter
 ```
+
+### Building the ESP firmware
+
+```
+cp secrets.ini.example secrets.ini   # WiFi, MQTT broker, optional OTA password
+pio run -e s3-usb -t upload          # first time over the COM port
+pio device monitor                   # logs on the COM port
+pio run -e s3-usb -t upload --upload-port goodwe-esp.local   # later, over WiFi (OTA)
+```
+
+Logs also go to MQTT topic `goodwe-esp/log`. Same entities as `goodwe-mqtt` with
+`--allow-control` (`-DALLOW_CONTROL=0` drops the control entities), so only one of the two
+should be on the inverter at a time.
 
 ## Plan: USB host on the S3
 
@@ -43,20 +58,20 @@ and logs. The C3 has no USB OTG controller, so it drops out.
    Close it, then power the board through the COM port from a 5 V supply at the inverter,
    and measure 5 V on the native port's VBUS before plugging in the inverter. Cable: USB-C
    to USB-B ("printer cable"); the inverter's port is USB-B.
-3. **USB transport.** ESP-IDF's raw `usb_host` API, which ships with the current Arduino
+3. **USB transport** (`src/usb/usb_hid.cpp`, written). ESP-IDF's raw `usb_host` API, which ships with the current Arduino
    core (2.0.17, IDF 4.4), so no HID driver is needed: open the device, claim interface 0,
    keep an IN transfer on endpoint `0x81`, and send `CC 99 <len>` + frame, padded to
    72 bytes, as a `SET_REPORT` (output, report ID 0) on the control pipe. Handle detach:
    the DS powers off at night and the device disappears with it.
-4. **Firmware.** The transport feeds `aa55::Master`; `lib/goodwe_ha` provides discovery,
-   state and the power limit, exactly as in `goodwe-mqtt`. Add WiFi, an MQTT client
-   (PubSubClient) and ArduinoOTA. Optional status LED (`lib/status_led`, `-DSTATUS_LED_PIN`, see
+4. **Firmware** (`src/usb/main.cpp`, written). The transport feeds `ha::Bridge`, exactly
+   as in `goodwe-mqtt`, plus WiFi, PubSubClient and ArduinoOTA. Optional status LED (`lib/status_led`, `-DSTATUS_LED_PIN`, see
    `platformio.ini`): orange while waiting, green in Normal, red on a fault or error bit,
-   off without data. The sniffer already drives it.
-5. **Logs and updates.** Over the COM port (serial console and flashing) while on the
+   off without data; `s3-usb` sets GPIO48, the DevKitC-1's on-board LED (38 on v1.1).
+5. **Logs and updates** (written). Over the COM port (serial console and flashing) while on the
    bench. Once mounted, use OTA, plus an MQTT log topic so the COM port needn't be
    reachable.
-6. **Mounting.** The board sits outside the inverter at the capped USB port. Seal the open port and the board against the weather.
+6. **Bench test, then mounting.** On the bench: flash, check the log for "inverter port
+   open" and registration with the NanoPi unplugged from the inverter. The board sits outside the inverter at the capped USB port. Seal the open port and the board against the weather.
 
 ### Shopping list
 

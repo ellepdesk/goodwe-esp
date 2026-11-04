@@ -3,3 +3,4 @@
 tools/host/goodwe
 tools/host/goodwe-mqtt
 __pycache__/
+secrets.ini
