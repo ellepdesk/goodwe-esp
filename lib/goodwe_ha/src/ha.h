@@ -23,6 +23,8 @@ struct Config {
     std::string prefix = "homeassistant";
     // Adds a number entity that sets the real power limit (execute 03 1E).
     bool power_limit = false;
+    // Rated power in W for the watt version of the power limit; 0 takes it from the serial.
+    int rated_power = 0;
 };
 
 const char* work_mode_name(uint16_t mode);  // nullptr if unknown
@@ -34,6 +36,15 @@ std::vector<Message> discovery(const Config& c, const char* serial);
 
 std::string power_limit_command_topic(const Config& c, const char* serial);
 std::string power_limit_state_topic(const Config& c, const char* serial);
+std::string power_limit_watts_command_topic(const Config& c, const char* serial);
+std::string power_limit_watts_state_topic(const Config& c, const char* serial);
+
+// Config::rated_power, else the model's W from the serial (1 3600 DS ... -> 3600); 0 if
+// neither gives one.
+int rated_power(const Config& c, const char* serial);
+// Converts a watt command ("0".."rated") to a percentage, rounded down so the limit never
+// exceeds the request. Returns false for a bad payload.
+bool watts_to_percent(const char* payload, int rated, int& pct);
 
 // Decides when to send the power limit. The inverter can't report its limit and may not
 // keep it across a restart, so it is re-sent after every registration and every return

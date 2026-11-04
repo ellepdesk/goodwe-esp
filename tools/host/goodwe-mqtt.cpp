@@ -26,9 +26,10 @@ namespace {
 std::atomic<bool> g_stop{false};
 std::atomic<int> g_connects{0};
 std::mutex g_command_mutex;
-std::string g_command_topic;  // guarded by g_command_mutex
-std::string g_command;
-bool g_has_command = false;
+// Guarded by g_command_mutex.
+std::string g_command_topic, g_watts_topic;
+std::string g_command, g_watts;
+bool g_has_command = false, g_has_watts = false;
 
 void log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void log(const char* fmt, ...) {
@@ -56,9 +57,14 @@ void on_disconnect(mosquitto*, void*, int rc) {
 
 void on_message(mosquitto*, void*, const mosquitto_message* m) {
     std::lock_guard<std::mutex> lock(g_command_mutex);
-    if (g_command_topic != m->topic) return;
-    g_command.assign(static_cast<const char*>(m->payload), size_t(m->payloadlen));
-    g_has_command = true;
+    std::string payload(static_cast<const char*>(m->payload), size_t(m->payloadlen));
+    if (g_command_topic == m->topic) {
+        g_command = payload;
+        g_has_command = true;
+    } else if (g_watts_topic == m->topic) {
+        g_watts = payload;
+        g_has_watts = true;
+    }
 }
 
 void publish(mosquitto* mq, const std::string& topic, const std::string& payload, bool retain) {
@@ -85,8 +91,10 @@ void usage() {
             "  --broker HOST     MQTT broker, default localhost\n"
             "  --port N          MQTT port, default 1883\n"
             "  --prefix P        discovery prefix, default homeassistant\n"
-            "  --allow-control   add a Power Limit number entity that sets the real power\n"
-            "                    limit; without it the entity is removed\n"
+            "  --allow-control   add Power Limit number entities (%% and W) that set the\n"
+            "                    real power limit; without it they are removed\n"
+            "  --rated-power W   rated power for the W entity, default from the serial\n"
+            "                    (1 3600 DS... -> 3600)\n"
             "  --raw             print all bytes sent and received\n"
             "\n"
             "MQTT_USERNAME and MQTT_PASSWORD are read from the environment.\n");
@@ -107,7 +115,7 @@ int main(int argc, char** argv) {
     ha::Config config;
 
     enum { kHid = 1, kReportSize, kSerial, kBaud, kAddress, kPoll, kBroker, kPort, kPrefix,
-           kAllow, kRaw };
+           kAllow, kRated, kRaw };
     static const option opts[] = {
         {"hid", optional_argument, nullptr, kHid},
         {"report-size", required_argument, nullptr, kReportSize},
@@ -119,6 +127,7 @@ int main(int argc, char** argv) {
         {"port", required_argument, nullptr, kPort},
         {"prefix", required_argument, nullptr, kPrefix},
         {"allow-control", no_argument, nullptr, kAllow},
+        {"rated-power", required_argument, nullptr, kRated},
         {"raw", no_argument, nullptr, kRaw},
         {"help", no_argument, nullptr, 'h'},
         {nullptr, 0, nullptr, 0},
@@ -141,6 +150,7 @@ int main(int argc, char** argv) {
         case kPort: port = atoi(optarg); break;
         case kPrefix: config.prefix = optarg; break;
         case kAllow: config.power_limit = true; break;
+        case kRated: config.rated_power = atoi(optarg); break;
         case kRaw: raw = true; break;
         default: usage(); return 2;
         }
@@ -213,9 +223,13 @@ int main(int argc, char** argv) {
         cb.on_execute = [&](uint8_t, bool ack) {
             limit.on_result(ack);
             if (ack) {
+                int rated = ha::rated_power(config, serial.c_str());
                 log("power limit %d%% applied", limit.applied());
                 publish(mq, ha::power_limit_state_topic(config, serial.c_str()),
                         std::to_string(limit.applied()), true);
+                if (rated > 0)
+                    publish(mq, ha::power_limit_watts_state_topic(config, serial.c_str()),
+                            std::to_string(limit.applied() * rated / 100), true);
             } else {
                 log("power limit not acknowledged");
             }
@@ -242,21 +256,39 @@ int main(int argc, char** argv) {
                     publish(mq, m.topic, m.payload, m.retain);
                 if (config.power_limit) {
                     std::string topic = ha::power_limit_command_topic(config, serial.c_str());
+                    std::string watts = ha::power_limit_watts_command_topic(config, serial.c_str());
                     {
                         std::lock_guard<std::mutex> lock(g_command_mutex);
                         g_command_topic = topic;
+                        g_watts_topic = watts;
                     }
                     mosquitto_subscribe(mq, nullptr, topic.c_str(), 1);
+                    mosquitto_subscribe(mq, nullptr, watts.c_str(), 1);
                 }
                 announced = connects;
             }
 
-            std::string command;
-            bool has_command = false;
+            std::string command, watts;
+            bool has_command = false, has_watts = false;
             {
                 std::lock_guard<std::mutex> lock(g_command_mutex);
                 std::swap(has_command, g_has_command);
                 command.swap(g_command);
+                std::swap(has_watts, g_has_watts);
+                watts.swap(g_watts);
+            }
+            if (has_watts) {
+                // Republished as the retained percentage command, the one setting that is
+                // restored after a restart; it comes back to us through the subscription.
+                int pct;
+                if (ha::watts_to_percent(watts.c_str(), ha::rated_power(config, serial.c_str()),
+                                         pct)) {
+                    log("power limit %s W requested", watts.c_str());
+                    publish(mq, ha::power_limit_command_topic(config, serial.c_str()),
+                            std::to_string(pct), true);
+                } else {
+                    log("ignoring power limit command '%s W'", watts.c_str());
+                }
             }
             if (has_command) {
                 if (limit.command(command.c_str()))

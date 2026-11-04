@@ -49,7 +49,7 @@ void test_error_and_mode_names() {
 void test_discovery_keeps_proxy_ids() {
     Config c;
     std::vector<Message> m = discovery(c, kSerial);
-    TEST_ASSERT_EQUAL(17, m.size());  // 16 sensors + removal of the power limit entity
+    TEST_ASSERT_EQUAL(18, m.size());  // 16 sensors + removal of both power limit entities
     TEST_ASSERT_EQUAL_STRING("homeassistant/sensor/goodwe_00000DSU00000000/voltage_pv1/config",
                              m[0].topic.c_str());
     TEST_ASSERT_TRUE(m[0].retain);
@@ -64,19 +64,63 @@ void test_discovery_keeps_proxy_ids() {
     TEST_ASSERT_NULL(strstr(m[9].payload.c_str(), "expire_after"));
     TEST_ASSERT_NOT_NULL(strstr(m[14].payload.c_str(), "\"entity_category\":\"diagnostic\""));
     TEST_ASSERT_EQUAL_STRING("", m[16].payload.c_str());
+    TEST_ASSERT_EQUAL_STRING("homeassistant/number/goodwe_00000DSU00000000/power_limit_w/config",
+                             m[17].topic.c_str());
+    TEST_ASSERT_EQUAL_STRING("", m[17].payload.c_str());
 }
 
 void test_discovery_with_power_limit() {
     Config c;
     c.power_limit = true;
     std::vector<Message> m = discovery(c, kSerial);
-    const Message& n = m.back();
+    // The dummy serial has no rated power, so the watt entity is removed.
+    TEST_ASSERT_EQUAL_STRING("", m.back().payload.c_str());
+    const Message& n = m[m.size() - 2];
     TEST_ASSERT_EQUAL_STRING("homeassistant/number/goodwe_00000DSU00000000/power_limit/config",
                              n.topic.c_str());
     TEST_ASSERT_NOT_NULL(strstr(
         n.payload.c_str(),
         "\"command_topic\":\"homeassistant/number/goodwe_00000DSU00000000/power_limit/set\""));
     TEST_ASSERT_NOT_NULL(strstr(n.payload.c_str(), "\"retain\":true"));
+
+    m = discovery(c, "13600DSU00000000");
+    const Message& w = m.back();
+    TEST_ASSERT_EQUAL_STRING("homeassistant/number/goodwe_13600DSU00000000/power_limit_w/config",
+                             w.topic.c_str());
+    TEST_ASSERT_NOT_NULL(
+        strstr(w.payload.c_str(), "\"unique_id\":\"power_limit_w_13600DSU00000000\""));
+    TEST_ASSERT_NOT_NULL(strstr(
+        w.payload.c_str(),
+        "\"command_topic\":\"homeassistant/number/goodwe_13600DSU00000000/power_limit_w/set\""));
+    TEST_ASSERT_NOT_NULL(strstr(w.payload.c_str(), "\"max\":3600,"));
+    TEST_ASSERT_NOT_NULL(strstr(w.payload.c_str(), "\"unit_of_measurement\":\"W\""));
+    TEST_ASSERT_NULL(strstr(w.payload.c_str(), "\"retain\""));
+}
+
+void test_rated_power() {
+    Config c;
+    TEST_ASSERT_EQUAL(3600, rated_power(c, "13600DSU00000000"));
+    TEST_ASSERT_EQUAL(0, rated_power(c, kSerial));
+    TEST_ASSERT_EQUAL(0, rated_power(c, "1AB00DSU00000000"));
+    TEST_ASSERT_EQUAL(0, rated_power(c, "13"));
+    c.rated_power = 3000;
+    TEST_ASSERT_EQUAL(3000, rated_power(c, "13600DSU00000000"));
+}
+
+void test_watts_to_percent_rounds_down() {
+    int pct = -1;
+    TEST_ASSERT_TRUE(watts_to_percent("1800", 3600, pct));
+    TEST_ASSERT_EQUAL(50, pct);
+    TEST_ASSERT_TRUE(watts_to_percent("2000", 3600, pct));
+    TEST_ASSERT_EQUAL(55, pct);  // 1980 W: never above the request
+    TEST_ASSERT_TRUE(watts_to_percent("35.9", 3600, pct));
+    TEST_ASSERT_EQUAL(0, pct);
+    TEST_ASSERT_TRUE(watts_to_percent("3600", 3600, pct));
+    TEST_ASSERT_EQUAL(100, pct);
+    TEST_ASSERT_FALSE(watts_to_percent("3601", 3600, pct));
+    TEST_ASSERT_FALSE(watts_to_percent("-1", 3600, pct));
+    TEST_ASSERT_FALSE(watts_to_percent("1kW", 3600, pct));
+    TEST_ASSERT_FALSE(watts_to_percent("100", 0, pct));
 }
 
 void test_power_limit_waits_for_normal() {
@@ -161,6 +205,8 @@ int main() {
     RUN_TEST(test_error_and_mode_names);
     RUN_TEST(test_discovery_keeps_proxy_ids);
     RUN_TEST(test_discovery_with_power_limit);
+    RUN_TEST(test_rated_power);
+    RUN_TEST(test_watts_to_percent_rounds_down);
     RUN_TEST(test_power_limit_waits_for_normal);
     RUN_TEST(test_power_limit_resent_after_registration_and_wake);
     RUN_TEST(test_power_limit_gives_up_after_max_attempts);

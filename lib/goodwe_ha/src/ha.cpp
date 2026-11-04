@@ -108,6 +108,14 @@ std::string device_json(const char* serial) {
                   serial, model.c_str());
 }
 
+// Parses a whole command payload as a number in [0, max].
+bool parse_number(const char* payload, double max, double& v) {
+    char* end;
+    v = strtod(payload, &end);
+    while (*end == ' ' || *end == '\n' || *end == '\r') end++;
+    return end != payload && !*end && v >= 0 && v <= max;
+}
+
 }  // namespace
 
 const char* work_mode_name(uint16_t mode) {
@@ -153,6 +161,30 @@ std::string power_limit_state_topic(const Config& c, const char* serial) {
     return node(c, "number", serial) + "/power_limit/state";
 }
 
+std::string power_limit_watts_command_topic(const Config& c, const char* serial) {
+    return node(c, "number", serial) + "/power_limit_w/set";
+}
+
+std::string power_limit_watts_state_topic(const Config& c, const char* serial) {
+    return node(c, "number", serial) + "/power_limit_w/state";
+}
+
+int rated_power(const Config& c, const char* serial) {
+    if (c.rated_power > 0) return c.rated_power;
+    if (strlen(serial) < 5) return 0;
+    char digits[5] = {serial[1], serial[2], serial[3], serial[4], 0};
+    for (int i = 0; i < 4; i++)
+        if (digits[i] < '0' || digits[i] > '9') return 0;
+    return atoi(digits);
+}
+
+bool watts_to_percent(const char* payload, int rated, int& pct) {
+    double w;
+    if (rated <= 0 || !parse_number(payload, rated, w)) return false;
+    pct = int(w * 100 / rated);
+    return true;
+}
+
 std::vector<Message> discovery(const Config& c, const char* serial) {
     std::vector<Message> out;
     const std::string device = device_json(serial);
@@ -177,9 +209,12 @@ std::vector<Message> discovery(const Config& c, const char* serial) {
     }
 
     std::string limit_config = node(c, "number", serial) + "/power_limit/config";
+    std::string watts_config = node(c, "number", serial) + "/power_limit_w/config";
+    const int rated = rated_power(c, serial);
+    // An empty retained config removes an entity that was announced before.
     if (!c.power_limit) {
-        // An empty retained config removes the entity if it was announced before.
         out.push_back({limit_config, "", true});
+        out.push_back({watts_config, "", true});
         return out;
     }
     // retain makes the broker hand the last setting back after a restart of this service.
@@ -192,14 +227,29 @@ std::vector<Message> discovery(const Config& c, const char* serial) {
         "\"device\":" +
         device + "}";
     out.push_back({limit_config, json, true});
+    if (rated <= 0) {
+        out.push_back({watts_config, "", true});
+        return out;
+    }
+    // Not retained: the owner turns it into a retained percentage command, so a restart
+    // has a single setting to restore.
+    json = format("{\"name\":\"Power Limit (W)\",\"unique_id\":\"power_limit_w_%s\",",
+                  serial) +
+           format("\"command_topic\":\"%s\",",
+                  power_limit_watts_command_topic(c, serial).c_str()) +
+           format("\"state_topic\":\"%s\",", power_limit_watts_state_topic(c, serial).c_str()) +
+           format("\"min\":0,\"max\":%d,\"step\":1,", rated) +
+           "\"mode\":\"box\",\"unit_of_measurement\":\"W\",\"device_class\":\"power\","
+           "\"entity_category\":\"config\",\"icon\":\"mdi:transmission-tower-export\","
+           "\"device\":" +
+           device + "}";
+    out.push_back({watts_config, json, true});
     return out;
 }
 
 bool PowerLimit::command(const char* payload) {
-    char* end;
-    double v = strtod(payload, &end);
-    while (*end == ' ' || *end == '\n' || *end == '\r') end++;
-    if (end == payload || *end || v < 0 || v > 100) return false;
+    double v;
+    if (!parse_number(payload, 100, v)) return false;
     wanted_ = int(v + 0.5);
     trigger();
     return true;
