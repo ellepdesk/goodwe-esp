@@ -130,6 +130,9 @@ void test_detail_sensors() {
                              m[22].topic.c_str());
     TEST_ASSERT_NOT_NULL(strstr(m[22].payload.c_str(), "\"suggested_display_precision\":2"));
     TEST_ASSERT_NOT_NULL(strstr(m[6].payload.c_str(), "\"suggested_display_precision\":2"));
+    TEST_ASSERT_NOT_NULL(strstr(m[0].payload.c_str(), "\"suggested_display_precision\":1"));
+    TEST_ASSERT_NOT_NULL(strstr(m[10].payload.c_str(), "\"suggested_display_precision\":0"));
+    TEST_ASSERT_NULL(strstr(m[12].payload.c_str(), "suggested_display_precision"));  // text
     TEST_ASSERT_NOT_NULL(strstr(m[0].payload.c_str(), "\"sw_version\":\"V1.16\""));
     TEST_ASSERT_NULL(strstr(discovery(Config(), kSerial)[0].payload.c_str(), "sw_version"));
 

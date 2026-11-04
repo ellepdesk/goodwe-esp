@@ -17,41 +17,42 @@ struct Sensor {
     const char* state_class;
     const char* entity_category;
     const char* icon;
-    // suggested_display_precision; 0 leaves HA's default, which is whole Hz for frequency.
+    // suggested_display_precision, matching the data's resolution: HA's defaults per
+    // device class (whole V and Hz, 2 decimals for A and kWh) don't. -1 for text.
     int precision;
 };
 
 // Same list, names and order as goodwe_logging_proxy's goodwemqttclient.py.
 const Sensor kSensors[] = {
-    {"voltage_pv1", "DC Voltage String 1", "V", "voltage", "measurement", nullptr, nullptr},
-    {"voltage_pv2", "DC Voltage String 2", "V", "voltage", "measurement", nullptr, nullptr},
-    {"current_pv1", "DC Current String 1", "A", "current", "measurement", nullptr, nullptr},
-    {"current_pv2", "DC Current String 2", "A", "current", "measurement", nullptr, nullptr},
-    {"voltage_ac", "AC Voltage", "V", "voltage", "measurement", nullptr, nullptr},
-    {"current_ac", "AC Current", "A", "current", "measurement", nullptr, nullptr},
+    {"voltage_pv1", "DC Voltage String 1", "V", "voltage", "measurement", nullptr, nullptr, 1},
+    {"voltage_pv2", "DC Voltage String 2", "V", "voltage", "measurement", nullptr, nullptr, 1},
+    {"current_pv1", "DC Current String 1", "A", "current", "measurement", nullptr, nullptr, 1},
+    {"current_pv2", "DC Current String 2", "A", "current", "measurement", nullptr, nullptr, 1},
+    {"voltage_ac", "AC Voltage", "V", "voltage", "measurement", nullptr, nullptr, 1},
+    {"current_ac", "AC Current", "A", "current", "measurement", nullptr, nullptr, 1},
     {"freq_ac", "AC Frequency", "Hz", "frequency", "measurement", nullptr, nullptr, 2},
-    {"power_ac", "AC Power", "W", "power", "measurement", nullptr, nullptr},
+    {"power_ac", "AC Power", "W", "power", "measurement", nullptr, nullptr, 0},
     {"temperature", "Inverter Temperature", "°C", "temperature", "measurement", nullptr,
-     nullptr},
+     nullptr, 1},
     {"kwh_total", "Total Generated Energy", "kWh", "energy", "total_increasing", nullptr,
-     nullptr},
-    {"hours_total", "Operating Hours", "h", "duration", "total_increasing", nullptr, nullptr},
+     nullptr, 1},
+    {"hours_total", "Operating Hours", "h", "duration", "total_increasing", nullptr, nullptr, 0},
     {"kwh_daily", "Daily Generated Energy", "kWh", "energy", "total_increasing", nullptr,
-     nullptr},
-    {"work_mode", "Work Mode", nullptr, nullptr, nullptr, nullptr, "mdi:solar-power"},
-    {"errors", "Errors", nullptr, nullptr, nullptr, nullptr, "mdi:alert-circle-outline"},
-    {"error_code", "Error Code", nullptr, nullptr, nullptr, "diagnostic", nullptr},
-    {"voltage_bus", "DC Bus Voltage", "V", "voltage", "measurement", "diagnostic", nullptr},
+     nullptr, 1},
+    {"work_mode", "Work Mode", nullptr, nullptr, nullptr, nullptr, "mdi:solar-power", -1},
+    {"errors", "Errors", nullptr, nullptr, nullptr, nullptr, "mdi:alert-circle-outline", -1},
+    {"error_code", "Error Code", nullptr, nullptr, nullptr, "diagnostic", nullptr, -1},
+    {"voltage_bus", "DC Bus Voltage", "V", "voltage", "measurement", "diagnostic", nullptr, 1},
 };
 
 // Read once after registration, so no state_class (no statistics) and no expire_after.
 const Sensor kDetailSensors[] = {
-    {"firmware", "Firmware", nullptr, nullptr, nullptr, "diagnostic", "mdi:chip"},
-    {"safety_country", "Safety Country", nullptr, nullptr, nullptr, "diagnostic", "mdi:earth"},
-    {"pv_start_voltage", "PV Start Voltage", "V", "voltage", nullptr, "diagnostic", nullptr},
-    {"start_delay", "Start Delay", "s", "duration", nullptr, "diagnostic", nullptr},
-    {"vac_min", "Grid Voltage Min", "V", "voltage", nullptr, "diagnostic", nullptr},
-    {"vac_max", "Grid Voltage Max", "V", "voltage", nullptr, "diagnostic", nullptr},
+    {"firmware", "Firmware", nullptr, nullptr, nullptr, "diagnostic", "mdi:chip", -1},
+    {"safety_country", "Safety Country", nullptr, nullptr, nullptr, "diagnostic", "mdi:earth", -1},
+    {"pv_start_voltage", "PV Start Voltage", "V", "voltage", nullptr, "diagnostic", nullptr, 1},
+    {"start_delay", "Start Delay", "s", "duration", nullptr, "diagnostic", nullptr, 0},
+    {"vac_min", "Grid Voltage Min", "V", "voltage", nullptr, "diagnostic", nullptr, 1},
+    {"vac_max", "Grid Voltage Max", "V", "voltage", nullptr, "diagnostic", nullptr, 1},
     {"fac_min", "Grid Frequency Min", "Hz", "frequency", nullptr, "diagnostic", nullptr, 2},
     {"fac_max", "Grid Frequency Max", "Hz", "frequency", nullptr, "diagnostic", nullptr, 2},
 };
@@ -186,7 +187,7 @@ std::string sensor_config(const Sensor& s, const char* serial, const std::string
     add_field(json, "state_class", s.state_class);
     add_field(json, "entity_category", s.entity_category);
     add_field(json, "icon", s.icon);
-    if (s.precision) json += format(",\"suggested_display_precision\":%d", s.precision);
+    if (s.precision >= 0) json += format(",\"suggested_display_precision\":%d", s.precision);
     if (expire) json += format(",\"expire_after\":%d", kExpireAfterS);
     return json + "}";
 }
