@@ -67,7 +67,7 @@ this takes over from the proxy.
 
 ```
 ./goodwe-mqtt --hid --broker 192.168.1.10                  # sensors only
-./goodwe-mqtt --hid --broker 192.168.1.10 --allow-control  # + Power Limit entity
+./goodwe-mqtt --hid --broker 192.168.1.10 --allow-control  # + Power Limit, Stop/Start
 ```
 
 - **Power Limit** (`--allow-control`): a number entity, 0–100 % of rated power, sent with
@@ -81,6 +81,11 @@ this takes over from the proxy.
   percentages, so a request is rounded down to one: 2000 W on a 3600 W model becomes 55 %
   = 1980 W, and the W entity then shows 1980. The service republishes a W request as the
   retained percentage command, so both entities show one setting and a restart restores it.
+- **Stop/Start Inverter** (`--allow-control`): two buttons for maintenance, **disabled by
+  default** in HA (enable them on the device page) and listed under Configuration, so they
+  stay off dashboards. Buttons rather than a switch: a stopped inverter reports plain Wait,
+  so there is no on/off state to show. Start takes ~40 s to reach Normal. Untested whether
+  a stop survives the nightly power-off, so don't leave it stopped overnight.
 - **Night**: the DS switches off without PV, and its USB device disappears with it. The
   service logs that once and reopens the port when the inverter comes back. Sensors go
   unavailable after 10 minutes (`expire_after`), as with the proxy.

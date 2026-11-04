@@ -21,7 +21,8 @@ struct Message {
 
 struct Config {
     std::string prefix = "homeassistant";
-    // Adds a number entity that sets the real power limit (execute 03 1E).
+    // Adds the control entities: power limit numbers (execute 03 1E) and stop/start
+    // buttons (03 1C/03 1B).
     bool power_limit = false;
     // Rated power in W for the watt version of the power limit; 0 takes it from the serial.
     int rated_power = 0;
@@ -38,6 +39,12 @@ std::string power_limit_command_topic(const Config& c, const char* serial);
 std::string power_limit_state_topic(const Config& c, const char* serial);
 std::string power_limit_watts_command_topic(const Config& c, const char* serial);
 std::string power_limit_watts_state_topic(const Config& c, const char* serial);
+
+// Stop/start buttons. They are buttons, not a switch: a stopped inverter reports plain
+// Wait, so there is no state to show. Disabled by default in HA; they are for
+// maintenance, not daily use.
+std::string stop_command_topic(const Config& c, const char* serial);
+std::string start_command_topic(const Config& c, const char* serial);
 
 // Config::rated_power, else the model's W from the serial (1 3600 DS ... -> 3600); 0 if
 // neither gives one.

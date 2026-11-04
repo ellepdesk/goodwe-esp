@@ -169,6 +169,14 @@ std::string power_limit_watts_state_topic(const Config& c, const char* serial) {
     return node(c, "number", serial) + "/power_limit_w/state";
 }
 
+std::string stop_command_topic(const Config& c, const char* serial) {
+    return node(c, "button", serial) + "/stop/press";
+}
+
+std::string start_command_topic(const Config& c, const char* serial) {
+    return node(c, "button", serial) + "/start/press";
+}
+
 int rated_power(const Config& c, const char* serial) {
     if (c.rated_power > 0) return c.rated_power;
     if (strlen(serial) < 5) return 0;
@@ -210,12 +218,38 @@ std::vector<Message> discovery(const Config& c, const char* serial) {
 
     std::string limit_config = node(c, "number", serial) + "/power_limit/config";
     std::string watts_config = node(c, "number", serial) + "/power_limit_w/config";
+    std::string stop_config = node(c, "button", serial) + "/stop/config";
+    std::string start_config = node(c, "button", serial) + "/start/config";
     const int rated = rated_power(c, serial);
     // An empty retained config removes an entity that was announced before.
     if (!c.power_limit) {
+        out.push_back({stop_config, "", true});
+        out.push_back({start_config, "", true});
         out.push_back({limit_config, "", true});
         out.push_back({watts_config, "", true});
         return out;
+    }
+    struct Button {
+        const std::string& config;
+        std::string topic;
+        const char* tag;
+        const char* name;
+        const char* icon;
+    };
+    const Button buttons[] = {
+        {stop_config, stop_command_topic(c, serial), "stop", "Stop Inverter", "mdi:power-off"},
+        {start_config, start_command_topic(c, serial), "start", "Start Inverter", "mdi:power-on"},
+    };
+    for (const Button& b : buttons) {
+        out.push_back(
+            {b.config,
+             format("{\"name\":\"%s\",\"unique_id\":\"%s_%s\",\"command_topic\":\"%s\",",
+                    b.name, b.tag, serial, b.topic.c_str()) +
+                 format("\"entity_category\":\"config\",\"enabled_by_default\":false,"
+                        "\"icon\":\"%s\",\"device\":",
+                        b.icon) +
+                 device + "}",
+             true});
     }
     // retain makes the broker hand the last setting back after a restart of this service.
     std::string json =

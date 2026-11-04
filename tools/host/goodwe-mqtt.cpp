@@ -27,9 +27,10 @@ std::atomic<bool> g_stop{false};
 std::atomic<int> g_connects{0};
 std::mutex g_command_mutex;
 // Guarded by g_command_mutex.
-std::string g_command_topic, g_watts_topic;
+std::string g_command_topic, g_watts_topic, g_stop_topic, g_start_topic;
 std::string g_command, g_watts;
 bool g_has_command = false, g_has_watts = false;
+uint8_t g_button = 0;  // aa55::kStop or kStart, 0 when none
 
 void log(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 void log(const char* fmt, ...) {
@@ -64,6 +65,10 @@ void on_message(mosquitto*, void*, const mosquitto_message* m) {
     } else if (g_watts_topic == m->topic) {
         g_watts = payload;
         g_has_watts = true;
+    } else if (g_stop_topic == m->topic) {
+        g_button = aa55::kStop;
+    } else if (g_start_topic == m->topic) {
+        g_button = aa55::kStart;
     }
 }
 
@@ -91,8 +96,9 @@ void usage() {
             "  --broker HOST     MQTT broker, default localhost\n"
             "  --port N          MQTT port, default 1883\n"
             "  --prefix P        discovery prefix, default homeassistant\n"
-            "  --allow-control   add Power Limit number entities (%% and W) that set the\n"
-            "                    real power limit; without it they are removed\n"
+            "  --allow-control   add Power Limit number entities (%% and W) and Stop/Start\n"
+            "                    buttons (disabled in HA by default); without it they\n"
+            "                    are removed\n"
             "  --rated-power W   rated power for the W entity, default from the serial\n"
             "                    (1 3600 DS... -> 3600)\n"
             "  --raw             print all bytes sent and received\n"
@@ -220,7 +226,12 @@ int main(int argc, char** argv) {
                     ha::state_json(serial.c_str(), info), false);
             limit.on_info(info);
         };
-        cb.on_execute = [&](uint8_t, bool ack) {
+        cb.on_execute = [&](uint8_t func, bool ack) {
+            if (func != aa55::kRealPowerAdjust) {
+                log("%s: %s", func == aa55::kStop ? "stop" : "start",
+                    ack ? "ACK" : "NAK or no reply");
+                return;
+            }
             limit.on_result(ack);
             if (ack) {
                 int rated = ha::rated_power(config, serial.c_str());
@@ -257,21 +268,27 @@ int main(int argc, char** argv) {
                 if (config.power_limit) {
                     std::string topic = ha::power_limit_command_topic(config, serial.c_str());
                     std::string watts = ha::power_limit_watts_command_topic(config, serial.c_str());
+                    std::string stop = ha::stop_command_topic(config, serial.c_str());
+                    std::string start = ha::start_command_topic(config, serial.c_str());
                     {
                         std::lock_guard<std::mutex> lock(g_command_mutex);
                         g_command_topic = topic;
                         g_watts_topic = watts;
+                        g_stop_topic = stop;
+                        g_start_topic = start;
                     }
-                    mosquitto_subscribe(mq, nullptr, topic.c_str(), 1);
-                    mosquitto_subscribe(mq, nullptr, watts.c_str(), 1);
+                    for (const std::string& t : {topic, watts, stop, start})
+                        mosquitto_subscribe(mq, nullptr, t.c_str(), 1);
                 }
                 announced = connects;
             }
 
             std::string command, watts;
             bool has_command = false, has_watts = false;
+            uint8_t button = 0;
             {
                 std::lock_guard<std::mutex> lock(g_command_mutex);
+                if (!master.exec_pending()) std::swap(button, g_button);
                 std::swap(has_command, g_has_command);
                 command.swap(g_command);
                 std::swap(has_watts, g_has_watts);
@@ -296,9 +313,13 @@ int main(int argc, char** argv) {
                 else
                     log("ignoring power limit command '%s'", command.c_str());
             }
+            if (button) {
+                log("%s requested", button == aa55::kStop ? "stop" : "start");
+                master.execute(button, nullptr, 0);
+            }
             uint8_t pct;
-            if (limit.due(pct) && !master.execute(aa55::kRealPowerAdjust, &pct, 1))
-                limit.on_result(false);
+            if (!master.exec_pending() && limit.due(pct))
+                master.execute(aa55::kRealPowerAdjust, &pct, 1);
         }
         if (!g_stop) nap(2);
     }

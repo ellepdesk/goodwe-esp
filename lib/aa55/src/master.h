@@ -39,6 +39,7 @@ public:
     bool execute(uint8_t func, const uint8_t* data, uint8_t len);
 
     State state() const { return state_; }
+    bool exec_pending() const { return exec_pending_; }
     const char* serial() const { return serial_; }
 
 private:

@@ -49,7 +49,7 @@ void test_error_and_mode_names() {
 void test_discovery_keeps_proxy_ids() {
     Config c;
     std::vector<Message> m = discovery(c, kSerial);
-    TEST_ASSERT_EQUAL(18, m.size());  // 16 sensors + removal of both power limit entities
+    TEST_ASSERT_EQUAL(20, m.size());  // 16 sensors + removal of the 4 control entities
     TEST_ASSERT_EQUAL_STRING("homeassistant/sensor/goodwe_00000DSU00000000/voltage_pv1/config",
                              m[0].topic.c_str());
     TEST_ASSERT_TRUE(m[0].retain);
@@ -63,10 +63,11 @@ void test_discovery_keeps_proxy_ids() {
     // Totals have no expiry, so the energy dashboard keeps them overnight.
     TEST_ASSERT_NULL(strstr(m[9].payload.c_str(), "expire_after"));
     TEST_ASSERT_NOT_NULL(strstr(m[14].payload.c_str(), "\"entity_category\":\"diagnostic\""));
-    TEST_ASSERT_EQUAL_STRING("", m[16].payload.c_str());
+    for (size_t i = 16; i < m.size(); i++) TEST_ASSERT_EQUAL_STRING("", m[i].payload.c_str());
+    TEST_ASSERT_EQUAL_STRING("homeassistant/button/goodwe_00000DSU00000000/stop/config",
+                             m[16].topic.c_str());
     TEST_ASSERT_EQUAL_STRING("homeassistant/number/goodwe_00000DSU00000000/power_limit_w/config",
-                             m[17].topic.c_str());
-    TEST_ASSERT_EQUAL_STRING("", m[17].payload.c_str());
+                             m[19].topic.c_str());
 }
 
 void test_discovery_with_power_limit() {
@@ -95,6 +96,22 @@ void test_discovery_with_power_limit() {
     TEST_ASSERT_NOT_NULL(strstr(w.payload.c_str(), "\"max\":3600,"));
     TEST_ASSERT_NOT_NULL(strstr(w.payload.c_str(), "\"unit_of_measurement\":\"W\""));
     TEST_ASSERT_NULL(strstr(w.payload.c_str(), "\"retain\""));
+}
+
+void test_stop_start_buttons_are_disabled_by_default() {
+    Config c;
+    c.power_limit = true;
+    std::vector<Message> m = discovery(c, kSerial);
+    const Message& stop = m[16];
+    TEST_ASSERT_EQUAL_STRING("homeassistant/button/goodwe_00000DSU00000000/stop/config",
+                             stop.topic.c_str());
+    const char* p = stop.payload.c_str();
+    TEST_ASSERT_NOT_NULL(strstr(p, "\"unique_id\":\"stop_00000DSU00000000\""));
+    TEST_ASSERT_NOT_NULL(
+        strstr(p, "\"command_topic\":\"homeassistant/button/goodwe_00000DSU00000000/stop/press\""));
+    TEST_ASSERT_NOT_NULL(strstr(p, "\"enabled_by_default\":false"));
+    TEST_ASSERT_NOT_NULL(strstr(p, "\"entity_category\":\"config\""));
+    TEST_ASSERT_NOT_NULL(strstr(m[17].payload.c_str(), "\"unique_id\":\"start_00000DSU00000000\""));
 }
 
 void test_rated_power() {
@@ -205,6 +222,7 @@ int main() {
     RUN_TEST(test_error_and_mode_names);
     RUN_TEST(test_discovery_keeps_proxy_ids);
     RUN_TEST(test_discovery_with_power_limit);
+    RUN_TEST(test_stop_start_buttons_are_disabled_by_default);
     RUN_TEST(test_rated_power);
     RUN_TEST(test_watts_to_percent_rounds_down);
     RUN_TEST(test_power_limit_waits_for_normal);
