@@ -121,6 +121,36 @@ Layouts per GoodWe's "Inverter.VS.EzFamily PROTOCOL V1.1" (in the GoodWeUSBLogge
 | `01 02` | firmware `V1.16` (5), model `GW3600-DS` (10), manufacturer, blank here (16), serial (16), nominal PV voltage `3600` = 360.0 V (4), internal version, all `00` (12), safety country `0x14` (1) |
 | `01 03` | 6 × u16 BE: 1500, 30, 1840, 2530, 4803, 5097 = PV start 150.0 V, start delay 30 s, Vac 184.0–253.0 V, Fac 48.03–50.97 Hz |
 
+## Firmware updater (not traced)
+
+EzExplorer has a firmware flasher ("Update Program" in the Inverter menu; window "Flash",
+log "Welcome to use EzFlash!"). This section is from its strings and the 2011 help page
+"Update program of inverter" (USB mode); the frames it sends were not disassembled.
+
+- Dialogs: `GWInverterFlashDlg` (USB) plus wireless, dual-wireless and three-phase
+  wireless variants for the old EzBee radio ("Wireless Update Program").
+- Automatic mode takes the first `*.mot` in `C:\FlashFile`; manual mode picks a `*.out` or
+  `*.mot`. The help only says the file is a "compiled special file" from GoodWe. No
+  firmware files ship with the installer, and none were found online.
+
+Two update routines:
+
+| Routine | File | Log sequence |
+|---|---|---|
+| `0x453560` master, `0x453b20` slave, `0x4541f0` program/verify | `.out` (TI COFF, as for a C2000 DSP) | "Master cpu update in progress...", erase with three acknowledged steps ("erase ack information1–3"), "Programming Start", "Programming complete, start verify", "Verify complete!", then the same for "Slave cpu". Any failure: "Please Reset Device for Reflash!" |
+| `0x457ac0` setup, `0x457f60` transfer | `.mot` (Motorola S-record, as for Renesas MCUs) | maps the file to `tmp.bin`, handshake ("Did not receive hand-shaking information"), acknowledge, transfer with "%d %%" and "%d seconds remaining", "Firmware Update Completed!" |
+
+The `.mot` setup builds a parameter table using address `0x11`, the address the GW3600-DS
+gets on registration. Which routine applies to which model is unknown.
+
+The two-CPU split matches the protocol PDF's error bit 12, "Internal Version Unmatch"
+("master and slave firmware version is unmatch"). The GW3600-DS reports `V1.16` with an
+empty internal version (see `01 02` above); the help's Property screenshot shows a
+GW4600-SS on `E1.00`.
+
+**Don't run any of this against the inverter**: an interrupted master/slave flash asks
+for a reset and reflash, and there is no known firmware file to reflash with.
+
 ## Not yet known
 
 - Whether the limit persists across restarts, and whether every write wears flash. Don't
