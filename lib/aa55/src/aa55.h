@@ -30,6 +30,8 @@ enum Function : uint8_t {
     kOfflineQuery = 0x00,
     kAllocateAddress = 0x01,
     kRunningInfo = 0x01,
+    kIdInfo = 0x02,
+    kSettings = 0x03,
     kStart = 0x1B,
     kStop = 0x1C,
     kRealPowerAdjust = 0x1E,
@@ -94,5 +96,30 @@ struct RunningInfo {
 constexpr uint8_t kRunningInfoLen = 46;
 
 bool decode_running_info(const uint8_t* data, size_t len, RunningInfo& out);
+
+// ID info (01/82). Strings are trimmed of padding.
+struct IdInfo {
+    char firmware[6];   // "V1.16"
+    char model[11];     // "GW3600-DS"
+    char serial[17];
+    uint16_t nominal;   // ASCII field, "3600" on a GW3600-DS; GoodWe's PDF says PV voltage
+    uint8_t safety_country;
+};
+
+constexpr uint8_t kIdInfoLen = 64;
+
+bool decode_id_info(const uint8_t* data, size_t len, IdInfo& out);
+
+// Grid and start settings (01/83).
+struct Settings {
+    float pv_start_voltage;
+    uint16_t start_delay_s;
+    float vac_min, vac_max;
+    float fac_min, fac_max;
+};
+
+constexpr uint8_t kSettingsLen = 12;
+
+bool decode_settings(const uint8_t* data, size_t len, Settings& out);
 
 }  // namespace aa55

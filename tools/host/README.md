@@ -86,6 +86,10 @@ this takes over from the proxy.
   stay off dashboards. Buttons rather than a switch: a stopped inverter reports plain Wait,
   so there is no on/off state to show. Start takes ~40 s to reach Normal. Untested whether
   a stop survives the nightly power-off, so don't leave it stopped overnight.
+- **Details**: after each registration the service reads ID info (`01 02`) and settings
+  (`01 03`) once. The firmware becomes the device's software version in HA, and eight
+  diagnostic sensors show it plus the safety country, PV start voltage, start delay and the
+  grid voltage and frequency windows (retained on `…/goodwe_<serial>/details`).
 - **Night**: the DS switches off without PV, and its USB device disappears with it. The
   service logs that once and reopens the port when the inverter comes back. Sensors go
   unavailable after 10 minutes (`expire_after`), as with the proxy.

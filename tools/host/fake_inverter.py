@@ -2,7 +2,8 @@
 
     python3 fake_inverter.py [--nak]
 prints the pty path to pass to `goodwe --serial`. Answers registration, running-info
-polls (with data from a real 2023 capture) and execute commands (ACK, or NAK with --nak).
+polls (with data from a real 2023 capture), ID info and settings (from the GW3600-DS,
+serial replaced) and execute commands (ACK, or NAK with --nak).
 """
 import os
 import pty
@@ -14,6 +15,8 @@ INFO = bytes.fromhex(
     "071c0513002f00170919002e138a04550001013900000000"
     "0002da2900007ffc00100000000000000e3900000023"
 )
+ID_INFO = b"V1.16GW3600-DS" + b" " * 17 + SERIAL + b"3600" + bytes(12) + b"\x14"
+SETTINGS = bytes.fromhex("05dc001e073009e212c313e9")
 OWN = 0x80
 
 
@@ -61,6 +64,10 @@ def main():
             address = None
         elif dst == address and ctrl == 0x01 and func == 0x01:
             reply = frame(address, OWN, 0x01, 0x81, INFO)
+        elif dst == address and ctrl == 0x01 and func == 0x02:
+            reply = frame(address, OWN, 0x01, 0x82, ID_INFO)
+        elif dst == address and ctrl == 0x01 and func == 0x03:
+            reply = frame(address, OWN, 0x01, 0x83, SETTINGS)
         elif dst == address and ctrl == 0x03:
             reply = frame(address, OWN, 0x03, func | 0x80, bytes([0x15 if nak else 0x06]))
         if reply:

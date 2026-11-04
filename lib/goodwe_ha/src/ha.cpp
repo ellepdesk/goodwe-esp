@@ -42,6 +42,18 @@ const Sensor kSensors[] = {
     {"voltage_bus", "DC Bus Voltage", "V", "voltage", "measurement", "diagnostic", nullptr},
 };
 
+// Read once after registration, so no state_class (no statistics) and no expire_after.
+const Sensor kDetailSensors[] = {
+    {"firmware", "Firmware", nullptr, nullptr, nullptr, "diagnostic", "mdi:chip"},
+    {"safety_country", "Safety Country", nullptr, nullptr, nullptr, "diagnostic", "mdi:earth"},
+    {"pv_start_voltage", "PV Start Voltage", "V", "voltage", nullptr, "diagnostic", nullptr},
+    {"start_delay", "Start Delay", "s", "duration", nullptr, "diagnostic", nullptr},
+    {"vac_min", "Grid Voltage Min", "V", "voltage", nullptr, "diagnostic", nullptr},
+    {"vac_max", "Grid Voltage Max", "V", "voltage", nullptr, "diagnostic", nullptr},
+    {"fac_min", "Grid Frequency Min", "Hz", "frequency", nullptr, "diagnostic", nullptr},
+    {"fac_max", "Grid Frequency Max", "Hz", "frequency", nullptr, "diagnostic", nullptr},
+};
+
 constexpr int kExpireAfterS = 600;
 
 // EzExplorer's names; see docs/protocol.md for where GoodWe's PDF differs.
@@ -99,13 +111,40 @@ std::string node(const Config& c, const char* component, const char* serial) {
     return c.prefix + "/" + component + "/goodwe_" + serial;
 }
 
-std::string device_json(const char* serial) {
+// Keeps inverter-supplied text safe inside a JSON string.
+std::string json_safe(const char* s) {
+    std::string out;
+    for (; *s; s++)
+        if (*s >= 0x20 && *s < 0x7f && *s != '"' && *s != '\\') out += *s;
+    return out;
+}
+
+std::string device_json(const char* serial, const char* sw_version) {
     // The proxy derives the model from the serial: 1 3600 DS ... -> GW-3600-DS.
     std::string s(serial);
     std::string model = s.size() >= 7 ? "GW-" + s.substr(1, 4) + "-" + s.substr(5, 2) : "GW";
-    return format("{\"identifiers\":[\"%s\"],\"name\":\"GoodWe Inverter\","
-                  "\"manufacturer\":\"GoodWe\",\"model\":\"%s\"}",
-                  serial, model.c_str());
+    std::string json = format("{\"identifiers\":[\"%s\"],\"name\":\"GoodWe Inverter\","
+                              "\"manufacturer\":\"GoodWe\",\"model\":\"%s\"",
+                              serial, model.c_str());
+    if (sw_version && *sw_version)
+        json += format(",\"sw_version\":\"%s\"", json_safe(sw_version).c_str());
+    return json + "}";
+}
+
+std::string sensor_config(const Sensor& s, const char* serial, const std::string& state,
+                          const std::string& device, bool expire) {
+    std::string json =
+        format("{\"name\":\"%s\",\"state_topic\":\"%s\",", s.name, state.c_str()) +
+        format("\"unique_id\":\"%s_%s\",\"value_template\":\"{{ value_json.%s }}\"", s.tag,
+               serial, s.tag);
+    json += ",\"device\":" + device;
+    add_field(json, "unit_of_measurement", s.uom);
+    add_field(json, "device_class", s.device_class);
+    add_field(json, "state_class", s.state_class);
+    add_field(json, "entity_category", s.entity_category);
+    add_field(json, "icon", s.icon);
+    if (expire) json += format(",\"expire_after\":%d", kExpireAfterS);
+    return json + "}";
 }
 
 // Parses a whole command payload as a number in [0, max].
@@ -193,28 +232,39 @@ bool watts_to_percent(const char* payload, int rated, int& pct) {
     return true;
 }
 
-std::vector<Message> discovery(const Config& c, const char* serial) {
+std::string details_topic(const Config& c, const char* serial) {
+    return node(c, "sensor", serial) + "/details";
+}
+
+std::string details_json(const aa55::IdInfo* id, const aa55::Settings* st) {
+    std::string json;
+    if (id)
+        json += format(",\"firmware\":\"%s\",\"safety_country\":%u",
+                       json_safe(id->firmware).c_str(), id->safety_country);
+    if (st)
+        json += format(",\"pv_start_voltage\":%.1f,\"start_delay\":%u,\"vac_min\":%.1f,"
+                       "\"vac_max\":%.1f,\"fac_min\":%.2f,\"fac_max\":%.2f",
+                       st->pv_start_voltage, st->start_delay_s, st->vac_min, st->vac_max,
+                       st->fac_min, st->fac_max);
+    if (json.empty()) return "{}";
+    json[0] = '{';
+    return json + "}";
+}
+
+std::vector<Message> discovery(const Config& c, const char* serial, const char* sw_version) {
     std::vector<Message> out;
-    const std::string device = device_json(serial);
+    const std::string device = device_json(serial, sw_version);
     const std::string state = state_topic(c, serial);
     for (const Sensor& s : kSensors) {
-        std::string json = format("{\"name\":\"%s\",\"state_topic\":\"%s\",", s.name,
-                                  state.c_str()) +
-                           format("\"unique_id\":\"%s_%s\",\"value_template\":"
-                                  "\"{{ value_json.%s }}\"",
-                                  s.tag, serial, s.tag);
-        json += ",\"device\":" + device;
-        add_field(json, "unit_of_measurement", s.uom);
-        add_field(json, "device_class", s.device_class);
-        add_field(json, "state_class", s.state_class);
-        add_field(json, "entity_category", s.entity_category);
-        add_field(json, "icon", s.icon);
         // Totals keep their last value overnight; everything else is real-time.
-        if (!s.state_class || strncmp(s.state_class, "total", 5) != 0)
-            json += format(",\"expire_after\":%d", kExpireAfterS);
-        json += "}";
-        out.push_back({node(c, "sensor", serial) + "/" + s.tag + "/config", json, true});
+        bool expire = !s.state_class || strncmp(s.state_class, "total", 5) != 0;
+        out.push_back({node(c, "sensor", serial) + "/" + s.tag + "/config",
+                       sensor_config(s, serial, state, device, expire), true});
     }
+    const std::string details = details_topic(c, serial);
+    for (const Sensor& s : kDetailSensors)
+        out.push_back({node(c, "sensor", serial) + "/" + s.tag + "/config",
+                       sensor_config(s, serial, details, device, false), true});
 
     std::string limit_config = node(c, "number", serial) + "/power_limit/config";
     std::string watts_config = node(c, "number", serial) + "/power_limit_w/config";

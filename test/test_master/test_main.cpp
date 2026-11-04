@@ -17,11 +17,22 @@ static const uint8_t kInfo[kRunningInfoLen] = {
     0x00, 0x00, 0x00, 0x00, 0x0e, 0x39, 0x00, 0x00, 0x00, 0x23,
 };
 
+// 01/82 and 01/83 replies from the GW3600-DS (2026-10-30), serial replaced.
+static const char kIdReply[] =
+    "V1.16GW3600-DS                 00000DSU000000003600"
+    "\0\0\0\0\0\0\0\0\0\0\0\0\x14";
+static const uint8_t kSettingsReply[kSettingsLen] = {0x05, 0xdc, 0x00, 0x1e, 0x07, 0x30,
+                                                     0x09, 0xe2, 0x12, 0xc3, 0x13, 0xe9};
+
 struct Harness {
     std::vector<Frame> sent;
     std::vector<uint16_t> pac;
     std::vector<std::pair<uint8_t, bool>> executed;
     std::string registered;
+    int details = 0;
+    IdInfo id{};
+    Settings settings{};
+    bool have_id = false, have_settings = false;
     Parser sent_parser;
     Master master;
     uint32_t now = 0;
@@ -36,6 +47,13 @@ struct Harness {
               [this](const char* s) { registered = s; },
               [this](const RunningInfo& i) { pac.push_back(i.pac); },
               [this](uint8_t f, bool ack) { executed.push_back({f, ack}); },
+              [this](const IdInfo* i, const Settings* s) {
+                  details++;
+                  have_id = i;
+                  have_settings = s;
+                  if (i) id = *i;
+                  if (s) settings = *s;
+              },
           }) {}
 
     void reply(uint8_t src, uint8_t ctrl, uint8_t func, const uint8_t* data, uint8_t len) {
@@ -57,6 +75,13 @@ struct Harness {
         reply(kBroadcast, kRegister, 0x80, (const uint8_t*)kSerial, 16);
         uint8_t none = 0;
         reply(kInv, kRegister, 0x81, &none, 0);
+    }
+
+    void answer_details() {
+        advance(1);
+        reply(kInv, kRead, 0x82, (const uint8_t*)kIdReply, kIdInfoLen);
+        advance(1);
+        reply(kInv, kRead, 0x83, kSettingsReply, kSettingsLen);
     }
 };
 
@@ -82,9 +107,58 @@ void test_registration_sequence() {
     TEST_ASSERT_EQUAL_STRING(kSerial, h.registered.c_str());
 }
 
+void test_reads_details_once_after_registration() {
+    Harness h;
+    h.register_inverter();
+    h.advance(1);
+    TEST_ASSERT_EQUAL_HEX8(kRead, h.last().ctrl);
+    TEST_ASSERT_EQUAL_HEX8(kIdInfo, h.last().func);
+    h.reply(kInv, kRead, 0x82, (const uint8_t*)kIdReply, kIdInfoLen);
+    TEST_ASSERT_EQUAL(0, h.details);
+    h.advance(1);
+    TEST_ASSERT_EQUAL_HEX8(kSettings, h.last().func);
+    h.reply(kInv, kRead, 0x83, kSettingsReply, kSettingsLen);
+    TEST_ASSERT_EQUAL(1, h.details);
+    TEST_ASSERT_TRUE(h.have_id);
+    TEST_ASSERT_TRUE(h.have_settings);
+    TEST_ASSERT_EQUAL_STRING("V1.16", h.id.firmware);
+    TEST_ASSERT_EQUAL_STRING("GW3600-DS", h.id.model);
+    TEST_ASSERT_EQUAL_STRING(kSerial, h.id.serial);
+    TEST_ASSERT_EQUAL(3600, h.id.nominal);
+    TEST_ASSERT_EQUAL_HEX8(0x14, h.id.safety_country);
+    TEST_ASSERT_EQUAL_FLOAT(150.0f, h.settings.pv_start_voltage);
+    TEST_ASSERT_EQUAL(30, h.settings.start_delay_s);
+    TEST_ASSERT_EQUAL_FLOAT(184.0f, h.settings.vac_min);
+    TEST_ASSERT_EQUAL_FLOAT(253.0f, h.settings.vac_max);
+    TEST_ASSERT_EQUAL_FLOAT(48.03f, h.settings.fac_min);
+    TEST_ASSERT_EQUAL_FLOAT(50.97f, h.settings.fac_max);
+    h.advance(1);
+    TEST_ASSERT_EQUAL_HEX8(kRunningInfo, h.last().func);
+    h.reply(kInv, kRead, 0x81, kInfo, sizeof kInfo);
+    h.advance(10000);
+    TEST_ASSERT_EQUAL_HEX8(kRunningInfo, h.last().func);  // not read again
+    TEST_ASSERT_EQUAL(1, h.details);
+}
+
+void test_skips_unanswered_details() {
+    Harness h;
+    h.register_inverter();
+    for (int i = 0; i < 2 * Master::kDetailAttempts; i++) {
+        h.advance(1);
+        TEST_ASSERT_EQUAL_HEX8(i < Master::kDetailAttempts ? kIdInfo : kSettings, h.last().func);
+        h.advance(Master::kReplyTimeoutMs);
+        h.reply(kInv, kRead, 0x81, kInfo, sizeof kInfo);  // keeps the link alive
+    }
+    TEST_ASSERT_EQUAL(1, h.details);
+    TEST_ASSERT_FALSE(h.have_id);
+    TEST_ASSERT_FALSE(h.have_settings);
+    TEST_ASSERT_EQUAL_HEX8(kRunningInfo, h.last().func);
+}
+
 void test_polls_running_info() {
     Harness h;
     h.register_inverter();
+    h.answer_details();
     h.advance(1);
     TEST_ASSERT_EQUAL_HEX8(kRead, h.last().ctrl);
     TEST_ASSERT_EQUAL_HEX8(kRunningInfo, h.last().func);
@@ -103,6 +177,7 @@ void test_polls_running_info() {
 void test_execute_ack_and_nak() {
     Harness h;
     h.register_inverter();
+    h.answer_details();
     h.advance(1);
     h.reply(kInv, kRead, 0x81, kInfo, sizeof kInfo);
 
@@ -150,6 +225,7 @@ void test_rediscovers_when_inverter_goes_silent() {
 void test_ignores_own_echo() {
     Harness h;
     h.register_inverter();
+    h.answer_details();
     h.advance(1);
     // An RS485 echo of our own poll must not be taken as the reply.
     h.reply(Master::kOwnAddress, kRead, 0x81, kInfo, sizeof kInfo);
@@ -159,6 +235,8 @@ void test_ignores_own_echo() {
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_registration_sequence);
+    RUN_TEST(test_reads_details_once_after_registration);
+    RUN_TEST(test_skips_unanswered_details);
     RUN_TEST(test_polls_running_info);
     RUN_TEST(test_execute_ack_and_nak);
     RUN_TEST(test_execute_timeout_reports_failure);

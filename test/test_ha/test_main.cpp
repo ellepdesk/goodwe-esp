@@ -49,7 +49,7 @@ void test_error_and_mode_names() {
 void test_discovery_keeps_proxy_ids() {
     Config c;
     std::vector<Message> m = discovery(c, kSerial);
-    TEST_ASSERT_EQUAL(20, m.size());  // 16 sensors + removal of the 4 control entities
+    TEST_ASSERT_EQUAL(28, m.size());  // 16 + 8 detail sensors, removal of 4 control entities
     TEST_ASSERT_EQUAL_STRING("homeassistant/sensor/goodwe_00000DSU00000000/voltage_pv1/config",
                              m[0].topic.c_str());
     TEST_ASSERT_TRUE(m[0].retain);
@@ -63,11 +63,11 @@ void test_discovery_keeps_proxy_ids() {
     // Totals have no expiry, so the energy dashboard keeps them overnight.
     TEST_ASSERT_NULL(strstr(m[9].payload.c_str(), "expire_after"));
     TEST_ASSERT_NOT_NULL(strstr(m[14].payload.c_str(), "\"entity_category\":\"diagnostic\""));
-    for (size_t i = 16; i < m.size(); i++) TEST_ASSERT_EQUAL_STRING("", m[i].payload.c_str());
+    for (size_t i = 24; i < m.size(); i++) TEST_ASSERT_EQUAL_STRING("", m[i].payload.c_str());
     TEST_ASSERT_EQUAL_STRING("homeassistant/button/goodwe_00000DSU00000000/stop/config",
-                             m[16].topic.c_str());
+                             m[24].topic.c_str());
     TEST_ASSERT_EQUAL_STRING("homeassistant/number/goodwe_00000DSU00000000/power_limit_w/config",
-                             m[19].topic.c_str());
+                             m[27].topic.c_str());
 }
 
 void test_discovery_with_power_limit() {
@@ -102,7 +102,7 @@ void test_stop_start_buttons_are_disabled_by_default() {
     Config c;
     c.power_limit = true;
     std::vector<Message> m = discovery(c, kSerial);
-    const Message& stop = m[16];
+    const Message& stop = m[24];
     TEST_ASSERT_EQUAL_STRING("homeassistant/button/goodwe_00000DSU00000000/stop/config",
                              stop.topic.c_str());
     const char* p = stop.payload.c_str();
@@ -111,7 +111,35 @@ void test_stop_start_buttons_are_disabled_by_default() {
         strstr(p, "\"command_topic\":\"homeassistant/button/goodwe_00000DSU00000000/stop/press\""));
     TEST_ASSERT_NOT_NULL(strstr(p, "\"enabled_by_default\":false"));
     TEST_ASSERT_NOT_NULL(strstr(p, "\"entity_category\":\"config\""));
-    TEST_ASSERT_NOT_NULL(strstr(m[17].payload.c_str(), "\"unique_id\":\"start_00000DSU00000000\""));
+    TEST_ASSERT_NOT_NULL(strstr(m[25].payload.c_str(), "\"unique_id\":\"start_00000DSU00000000\""));
+}
+
+void test_detail_sensors() {
+    std::vector<Message> m = discovery(Config(), kSerial, "V1.16");
+    const Message& fw = m[16];
+    TEST_ASSERT_EQUAL_STRING("homeassistant/sensor/goodwe_00000DSU00000000/firmware/config",
+                             fw.topic.c_str());
+    const char* p = fw.payload.c_str();
+    TEST_ASSERT_NOT_NULL(
+        strstr(p, "\"state_topic\":\"homeassistant/sensor/goodwe_00000DSU00000000/details\""));
+    TEST_ASSERT_NOT_NULL(strstr(p, "\"entity_category\":\"diagnostic\""));
+    TEST_ASSERT_NOT_NULL(strstr(p, "\"sw_version\":\"V1.16\""));
+    TEST_ASSERT_NULL(strstr(p, "expire_after"));
+    TEST_ASSERT_NOT_NULL(strstr(m[0].payload.c_str(), "\"sw_version\":\"V1.16\""));
+    TEST_ASSERT_NULL(strstr(discovery(Config(), kSerial)[0].payload.c_str(), "sw_version"));
+
+    aa55::IdInfo id{};
+    strcpy(id.firmware, "V1.16");
+    id.safety_country = 0x14;
+    aa55::Settings st{150.0f, 30, 184.0f, 253.0f, 48.03f, 50.97f};
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"firmware\":\"V1.16\",\"safety_country\":20,\"pv_start_voltage\":150.0,"
+        "\"start_delay\":30,\"vac_min\":184.0,\"vac_max\":253.0,\"fac_min\":48.03,"
+        "\"fac_max\":50.97}",
+        details_json(&id, &st).c_str());
+    TEST_ASSERT_EQUAL_STRING("{\"firmware\":\"V1.16\",\"safety_country\":20}",
+                             details_json(&id, nullptr).c_str());
+    TEST_ASSERT_EQUAL_STRING("{}", details_json(nullptr, nullptr).c_str());
 }
 
 void test_rated_power() {
@@ -223,6 +251,7 @@ int main() {
     RUN_TEST(test_discovery_keeps_proxy_ids);
     RUN_TEST(test_discovery_with_power_limit);
     RUN_TEST(test_stop_start_buttons_are_disabled_by_default);
+    RUN_TEST(test_detail_sensors);
     RUN_TEST(test_rated_power);
     RUN_TEST(test_watts_to_percent_rounds_down);
     RUN_TEST(test_power_limit_waits_for_normal);

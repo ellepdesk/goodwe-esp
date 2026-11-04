@@ -30,6 +30,17 @@ void Master::restart(uint32_t now_ms) {
     last_send_ms_ = now_ms;
 }
 
+void Master::next_detail() {
+    detail_attempts_ = 0;
+    if (detail_ == Detail::kIdInfo) {
+        detail_ = Detail::kSettings;
+        return;
+    }
+    detail_ = Detail::kDone;
+    if (cb_.on_details)
+        cb_.on_details(have_id_ ? &id_ : nullptr, have_settings_ ? &settings_ : nullptr);
+}
+
 bool Master::execute(uint8_t func, const uint8_t* data, uint8_t len) {
     if (exec_pending_) return false;
     exec_func_ = func;
@@ -66,6 +77,9 @@ void Master::handle(const Frame& f, uint32_t now_ms) {
         state_ = State::kRunning;
         last_seen_ms_ = now_ms;
         last_poll_ms_ = now_ms - poll_ms_;
+        detail_ = Detail::kIdInfo;
+        detail_attempts_ = 0;
+        have_id_ = have_settings_ = false;
         if (cb_.on_registered) cb_.on_registered(serial_);
         return;
     }
@@ -77,6 +91,19 @@ void Master::handle(const Frame& f, uint32_t now_ms) {
         awaiting_ = Awaiting::kNone;
         RunningInfo info;
         if (decode_running_info(f.data, f.len, info) && cb_.on_info) cb_.on_info(info);
+        return;
+    }
+    if (awaiting_ == Awaiting::kIdInfo && f.ctrl == kRead && f.func == (kIdInfo | kResponse)) {
+        awaiting_ = Awaiting::kNone;
+        have_id_ = decode_id_info(f.data, f.len, id_);
+        next_detail();
+        return;
+    }
+    if (awaiting_ == Awaiting::kSettings && f.ctrl == kRead &&
+        f.func == (kSettings | kResponse)) {
+        awaiting_ = Awaiting::kNone;
+        have_settings_ = decode_settings(f.data, f.len, settings_);
+        next_detail();
         return;
     }
     // EzExplorer accepts any one-byte reply from the inverter here, without checking
@@ -123,6 +150,16 @@ void Master::tick(uint32_t now_ms) {
     if (exec_pending_) {
         send(address_, kExecute, exec_func_, exec_data_, exec_len_);
         awaiting_ = Awaiting::kExecute;
+        last_send_ms_ = now_ms;
+        return;
+    }
+    // A detail the inverter doesn't answer is skipped after kDetailAttempts.
+    if (detail_ != Detail::kDone && detail_attempts_ >= kDetailAttempts) next_detail();
+    if (detail_ != Detail::kDone) {
+        bool id = detail_ == Detail::kIdInfo;
+        send(address_, kRead, id ? kIdInfo : kSettings, nullptr, 0);
+        awaiting_ = id ? Awaiting::kIdInfo : Awaiting::kSettings;
+        detail_attempts_++;
         last_send_ms_ = now_ms;
         return;
     }

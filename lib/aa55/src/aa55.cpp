@@ -1,5 +1,6 @@
 #include "aa55.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 namespace aa55 {
@@ -84,6 +85,42 @@ bool decode_running_info(const uint8_t* d, size_t len, RunningInfo& out) {
     out.h_total = be32(d + 28);
     out.vbus = be16(d + 40) / 10.0f;
     out.e_day = be16(d + 44) / 10.0f;
+    return true;
+}
+
+namespace {
+
+// Copies a space- or NUL-padded field and trims the padding.
+void copy_field(char* out, const uint8_t* d, size_t n) {
+    memcpy(out, d, n);
+    out[n] = 0;
+    for (size_t i = n; i > 0 && (out[i - 1] == ' ' || out[i - 1] == 0); i--) out[i - 1] = 0;
+}
+
+}  // namespace
+
+bool decode_id_info(const uint8_t* d, size_t len, IdInfo& out) {
+    // firmware 5, model 10, manufacturer 16, serial 16, nominal 4, internal version 12,
+    // safety country 1 (protocol PDF Table 3-8)
+    if (len < kIdInfoLen) return false;
+    copy_field(out.firmware, d, 5);
+    copy_field(out.model, d + 5, 10);
+    copy_field(out.serial, d + 31, 16);
+    char nominal[5];
+    copy_field(nominal, d + 47, 4);
+    out.nominal = uint16_t(atoi(nominal));
+    out.safety_country = d[63];
+    return true;
+}
+
+bool decode_settings(const uint8_t* d, size_t len, Settings& out) {
+    if (len < kSettingsLen) return false;
+    out.pv_start_voltage = be16(d + 0) / 10.0f;
+    out.start_delay_s = be16(d + 2);
+    out.vac_min = be16(d + 4) / 10.0f;
+    out.vac_max = be16(d + 6) / 10.0f;
+    out.fac_min = be16(d + 8) / 100.0f;
+    out.fac_max = be16(d + 10) / 100.0f;
     return true;
 }
 

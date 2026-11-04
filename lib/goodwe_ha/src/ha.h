@@ -33,7 +33,14 @@ std::string error_names(uint32_t code);      // "OK" when no bit is set
 
 std::string state_topic(const Config& c, const char* serial);
 std::string state_json(const char* serial, const aa55::RunningInfo& info);
-std::vector<Message> discovery(const Config& c, const char* serial);
+// sw_version (the firmware from ID info) goes into the device block when known.
+std::vector<Message> discovery(const Config& c, const char* serial,
+                               const char* sw_version = nullptr);
+
+// ID info and settings, read once per registration, for the diagnostic sensors. Either
+// may be nullptr when the inverter didn't answer; publish retained.
+std::string details_topic(const Config& c, const char* serial);
+std::string details_json(const aa55::IdInfo* id, const aa55::Settings* settings);
 
 std::string power_limit_command_topic(const Config& c, const char* serial);
 std::string power_limit_state_topic(const Config& c, const char* serial);

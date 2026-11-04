@@ -150,6 +150,16 @@ int main(int argc, char** argv) {
         fflush(stdout);
     };
     cb.on_info = print_info;
+    cb.on_details = [](const aa55::IdInfo* id, const aa55::Settings* st) {
+        if (id)
+            printf("firmware %s  model %s  nominal %u  safety country %u\n", id->firmware,
+                   id->model, id->nominal, id->safety_country);
+        if (st)
+            printf("pv start %.1fV  start delay %us  grid %.1f-%.1fV %.2f-%.2fHz\n",
+                   st->pv_start_voltage, st->start_delay_s, st->vac_min, st->vac_max,
+                   st->fac_min, st->fac_max);
+        fflush(stdout);
+    };
     cb.on_execute = [&](uint8_t func, bool ack) {
         printf("command %02X: %s\n", func, ack ? "ACK" : "NAK or no reply");
         exit_code = ack ? 0 : 1;

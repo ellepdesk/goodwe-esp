@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
         last_error.clear();
         log("inverter port open");
 
-        std::string serial;
+        std::string serial, firmware, details;
         int announced = -1;
         aa55::Master::Callbacks cb;
         cb.send = [&](const uint8_t* f, size_t n) {
@@ -218,8 +218,17 @@ int main(int argc, char** argv) {
         cb.on_registered = [&](const char* s) {
             log("registered inverter %s at address 0x%02X", s, address);
             serial = s;
+            firmware.clear();
+            details.clear();
             announced = -1;
             limit.on_registered();
+        };
+        cb.on_details = [&](const aa55::IdInfo* id, const aa55::Settings* st) {
+            log("firmware %s, settings %s", id ? id->firmware : "not read",
+                st ? "read" : "not read");
+            details = ha::details_json(id, st);
+            if (id) firmware = id->firmware;
+            announced = -1;  // re-announce with sw_version and the details
         };
         cb.on_info = [&](const aa55::RunningInfo& info) {
             publish(mq, ha::state_topic(config, serial.c_str()),
@@ -263,8 +272,11 @@ int main(int argc, char** argv) {
             // broker may have restarted without persistence.
             int connects = g_connects;
             if (!serial.empty() && connects != announced) {
-                for (const ha::Message& m : ha::discovery(config, serial.c_str()))
+                for (const ha::Message& m :
+                     ha::discovery(config, serial.c_str(), firmware.c_str()))
                     publish(mq, m.topic, m.payload, m.retain);
+                if (!details.empty())
+                    publish(mq, ha::details_topic(config, serial.c_str()), details, true);
                 if (config.power_limit) {
                     std::string topic = ha::power_limit_command_topic(config, serial.c_str());
                     std::string watts = ha::power_limit_watts_command_topic(config, serial.c_str());
