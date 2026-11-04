@@ -111,6 +111,25 @@ A 10 % test earlier was inconclusive: production (~290 W) stayed below the 360 W
 The limit can't be read back. Replies to `01 00`, `01 01`, `01 02` and `01 03` were
 compared at 100 % and 50 %: only the live measurements in running info changed.
 
+### Stop and start: verified on the GW3600-DS (2026-11-04, over USB)
+
+Both are ACKed (`03 9B`/`03 9C` reply with data `06`). Test at ~180 W output:
+
+| Time | Event | Running info |
+|---|---|---|
+| 0 s | `03 1C` stop, ACK | |
+| +3 s | | 0 W, AC current 0 A, mode 0 (Wait), PV at open-circuit voltage, no error bits |
+| +63 s | `03 1B` start, ACK | still Wait |
+| +43 s after start | | back in Normal, 189 W |
+
+So stop disconnects from the grid and reports plain Wait, indistinguishable from waiting
+for the sun. Start takes ~40 s, close to the inverter's 30 s start delay (`01 03`) plus
+grid checks. Start while already running is ACKed and harmless.
+
+Not tested: whether a stop survives the nightly power-off. Until that is known, don't
+leave the inverter stopped at the end of the day. For limiting export, a 0 % power limit
+is faster in both directions and keeps the inverter connected.
+
 ## Read replies (GW3600-DS, firmware V1.16)
 
 Layouts per GoodWe's "Inverter.VS.EzFamily PROTOCOL V1.1" (in the GoodWeUSBLogger repo), Tables 3-8 and 3-9.
