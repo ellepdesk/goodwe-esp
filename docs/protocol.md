@@ -137,7 +137,7 @@ Layouts per GoodWe's "Inverter.VS.EzFamily PROTOCOL V1.1" (in the GoodWeUSBLogge
 | Read | Reply |
 |---|---|
 | `01 00` | 23 bytes `00 01 02 03 04 07 0a 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1c 1f 20`: the running-info data indexes (PDF Table 3-3) this model fills. Missing are exactly the L2/L3 fields `05 06 08 09 0b 0c 1a 1b 1d 1e` of a single-phase unit. |
-| `01 02` | firmware `V1.16` (5), model `GW3600-DS` (10), manufacturer, blank here (16), serial (16), nominal PV voltage `3600` = 360.0 V (4), internal version, all `00` (12), safety country `0x14` (1) |
+| `01 02` | firmware `V1.16` (5), model `GW3600-DS` (10), manufacturer, blank here (16), serial (16), nominal PV voltage `3600` = 360.0 V (4), internal version, all `00` (12), safety country `0x14` (1): 20 = NL-A in the goodwe Python library's table, whose 0–13 match EzExplorer's country order |
 | `01 03` | 6 × u16 BE: 1500, 30, 1840, 2530, 4803, 5097 = PV start 150.0 V, start delay 30 s, Vac 184.0–253.0 V, Fac 48.03–50.97 Hz |
 
 ## Polling rate (GW3600-DS over USB, 2026-11-04)

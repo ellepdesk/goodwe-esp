@@ -133,13 +133,20 @@ void test_detail_sensors() {
     id.safety_country = 0x14;
     aa55::Settings st{150.0f, 30, 184.0f, 253.0f, 48.03f, 50.97f};
     TEST_ASSERT_EQUAL_STRING(
-        "{\"firmware\":\"V1.16\",\"safety_country\":20,\"pv_start_voltage\":150.0,"
+        "{\"firmware\":\"V1.16\",\"safety_country\":\"NL-A\",\"pv_start_voltage\":150.0,"
         "\"start_delay\":30,\"vac_min\":184.0,\"vac_max\":253.0,\"fac_min\":48.03,"
         "\"fac_max\":50.97}",
         details_json(&id, &st).c_str());
-    TEST_ASSERT_EQUAL_STRING("{\"firmware\":\"V1.16\",\"safety_country\":20}",
+    TEST_ASSERT_EQUAL_STRING("{\"firmware\":\"V1.16\",\"safety_country\":\"NL-A\"}",
                              details_json(&id, nullptr).c_str());
     TEST_ASSERT_EQUAL_STRING("{}", details_json(nullptr, nullptr).c_str());
+}
+
+void test_safety_country_names() {
+    TEST_ASSERT_EQUAL_STRING("IT CEI 0-21", safety_country_name(0).c_str());
+    TEST_ASSERT_EQUAL_STRING("NL-A", safety_country_name(20).c_str());
+    TEST_ASSERT_EQUAL_STRING("Brazil 254Vac", safety_country_name(149).c_str());
+    TEST_ASSERT_EQUAL_STRING("Unknown (15)", safety_country_name(15).c_str());
 }
 
 void test_rated_power() {
@@ -252,6 +259,7 @@ int main() {
     RUN_TEST(test_discovery_with_power_limit);
     RUN_TEST(test_stop_start_buttons_are_disabled_by_default);
     RUN_TEST(test_detail_sensors);
+    RUN_TEST(test_safety_country_names);
     RUN_TEST(test_rated_power);
     RUN_TEST(test_watts_to_percent_rounds_down);
     RUN_TEST(test_power_limit_waits_for_normal);

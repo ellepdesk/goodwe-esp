@@ -30,6 +30,8 @@ struct Config {
 
 const char* work_mode_name(uint16_t mode);  // nullptr if unknown
 std::string error_names(uint32_t code);      // "OK" when no bit is set
+// Grid code of the safety country index in ID info; "Unknown (n)" if not in the table.
+std::string safety_country_name(uint8_t index);
 
 std::string state_topic(const Config& c, const char* serial);
 std::string state_json(const char* serial, const aa55::RunningInfo& info);
