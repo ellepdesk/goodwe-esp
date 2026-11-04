@@ -17,7 +17,7 @@ Both talk to the inverter over:
 
 ```
 brew install hidapi mosquitto                                 # macOS
-sudo apt install libhidapi-dev libmosquitto-dev pkg-config    # Debian/Ubuntu/Armbian
+sudo apt install build-essential libhidapi-dev libmosquitto-dev pkg-config    # Debian/Ubuntu/Armbian
 make                # both; `make goodwe` needs only hidapi
 ```
 
@@ -85,7 +85,7 @@ this takes over from the proxy.
 make goodwe-mqtt
 sudo install goodwe-mqtt /usr/local/bin/
 sudo cp 99-goodwe.rules /etc/udev/rules.d/ && sudo udevadm control --reload && sudo udevadm trigger
-echo 'GOODWE_MQTT_ARGS=--hid --broker 192.168.1.10 --allow-control' | sudo tee /etc/default/goodwe-mqtt
+echo 'GOODWE_MQTT_ARGS=--hid --report-size 72 --broker 192.168.1.10 --allow-control' | sudo tee /etc/default/goodwe-mqtt
 sudo cp goodwe-mqtt.service /etc/systemd/system/
 sudo systemctl enable --now goodwe-mqtt
 journalctl -fu goodwe-mqtt

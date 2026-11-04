@@ -32,10 +32,11 @@ or "OTG", runs as a USB host to the inverter's HID device `0084:0041`. The other
 port, marked "COM" or "UART", has a USB-serial bridge and stays free for power, flashing
 and logs. The C3 has no USB OTG controller, so it drops out.
 
-1. **Descriptors.** Record `lsusb -v -d 0084:0041` from Linux (Orange Pi or Septimus):
-   speed (low or full), and whether there is an interrupt OUT endpoint or output reports
-   go as `SET_REPORT` control transfers. Known so far: 8-byte input reports, 72-byte output
-   reports, no report IDs.
+1. **Descriptors** (recorded 2026-11-04 with `lsusb -v -d 0084:0041`): full speed, one
+   interface, a single interrupt IN endpoint `0x81` (32-byte packets, 1 ms) and **no OUT
+   endpoint**, so output reports go as `SET_REPORT` control transfers. Report descriptor
+   (27 bytes, vendor page `0xFF00`, no report IDs): 8-byte input, 72-byte output.
+   bMaxPacketSize0 8, self-powered.
 2. **Power.** As host the S3 must put 5 V on VBUS; the inverter's port supplies none. On
    these boards the native port's VBUS is usually isolated by a diode; many clones have a
    solder jumper (often marked "IN-OUT" or "USB-OTG") that connects it to the 5 V rail.
@@ -44,10 +45,9 @@ and logs. The C3 has no USB OTG controller, so it drops out.
    to USB-B ("printer cable"); the inverter's port is USB-B.
 3. **USB transport.** ESP-IDF's raw `usb_host` API, which ships with the current Arduino
    core (2.0.17, IDF 4.4), so no HID driver is needed: open the device, claim interface 0,
-   keep an IN transfer on the interrupt endpoint, and send `CC 99 <len>` + frame, padded to
-   72 bytes, via the OUT endpoint or `SET_REPORT`. Handle detach: the DS powers off at
-   night and the device disappears with it. If IDF 4.4 can't handle a low-speed device,
-   move to Arduino 3 (IDF 5).
+   keep an IN transfer on endpoint `0x81`, and send `CC 99 <len>` + frame, padded to
+   72 bytes, as a `SET_REPORT` (output, report ID 0) on the control pipe. Handle detach:
+   the DS powers off at night and the device disappears with it.
 4. **Firmware.** The transport feeds `aa55::Master`; `lib/goodwe_ha` provides discovery,
    state and the power limit, exactly as in `goodwe-mqtt`. Add WiFi, an MQTT client
    (PubSubClient) and ArduinoOTA.

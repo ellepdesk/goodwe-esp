@@ -5,7 +5,7 @@ After=network-online.target
 
 [Service]
 # Set GOODWE_MQTT_ARGS (and MQTT_USERNAME/MQTT_PASSWORD if the broker needs them) here, e.g.
-#   GOODWE_MQTT_ARGS=--hid --broker 192.168.1.10 --allow-control
+#   GOODWE_MQTT_ARGS=--hid --report-size 72 --broker 192.168.1.10 --allow-control
 EnvironmentFile=/etc/default/goodwe-mqtt
 ExecStart=/usr/local/bin/goodwe-mqtt $GOODWE_MQTT_ARGS
 DynamicUser=yes
