@@ -211,6 +211,25 @@ void test_limit_survives_the_night() {
     TEST_ASSERT_EQUAL(30, sim.executed[1].data[0]);
 }
 
+void test_dropped_registration_is_quiet() {
+    Sim sim;
+    sim.bridge.port_opened();
+    sim.bridge.mqtt_connected();
+    sim.run(3000);
+    size_t configs = sim.count("homeassistant/sensor/goodwe_13600DSU00000000/voltage_pv1/config");
+    size_t states = sim.count("homeassistant/sensor/goodwe_13600DSU00000000/state");
+    size_t subscriptions = sim.subscribed.size();
+
+    sim.address = 0;  // the inverter forgets us and ignores polls until registered again
+    sim.run(20000);
+    TEST_ASSERT_EQUAL(0x11, sim.address);
+    // At most one poll period without data, and nothing that makes HA redo the entities.
+    TEST_ASSERT_TRUE(sim.count("homeassistant/sensor/goodwe_13600DSU00000000/state") >= states + 1);
+    TEST_ASSERT_EQUAL(configs,
+                      sim.count("homeassistant/sensor/goodwe_13600DSU00000000/voltage_pv1/config"));
+    TEST_ASSERT_EQUAL(subscriptions, sim.subscribed.size());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_registers_and_announces);
@@ -220,5 +239,6 @@ int main() {
     RUN_TEST(test_control_off_ignores_commands);
     RUN_TEST(test_reconnect_reannounces);
     RUN_TEST(test_limit_survives_the_night);
+    RUN_TEST(test_dropped_registration_is_quiet);
     return UNITY_END();
 }

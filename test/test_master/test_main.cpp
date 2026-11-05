@@ -222,6 +222,35 @@ void test_rediscovers_when_inverter_goes_silent() {
     TEST_ASSERT_TRUE(h.master.state() == Master::State::kDiscover);
 }
 
+void test_retries_a_missed_poll_at_once() {
+    Harness h;
+    h.register_inverter();
+    h.answer_details();
+    h.advance(1);
+    size_t before = h.sent.size();
+    h.advance(Master::kReplyTimeoutMs);
+    TEST_ASSERT_EQUAL(before + 1, h.sent.size());
+    TEST_ASSERT_EQUAL_HEX8(kRunningInfo, h.last().func);
+    h.reply(kInv, kRead, 0x81, kInfo, sizeof kInfo);
+    TEST_ASSERT_EQUAL(1, h.pac.size());
+    TEST_ASSERT_TRUE(h.master.state() == Master::State::kRunning);
+}
+
+void test_reregisters_after_missed_polls() {
+    Harness h;
+    h.register_inverter();
+    h.answer_details();
+    h.advance(1);
+    h.reply(kInv, kRead, 0x81, kInfo, sizeof kInfo);
+    // The inverter drops the registration and ignores polls from here on.
+    h.advance(10000);
+    h.advance(Master::kReplyTimeoutMs);
+    TEST_ASSERT_TRUE(h.master.state() == Master::State::kRunning);
+    h.advance(Master::kReplyTimeoutMs);
+    TEST_ASSERT_TRUE(h.master.state() == Master::State::kDiscover);
+    TEST_ASSERT_EQUAL_HEX8(0x02, h.last().func);
+}
+
 void test_ignores_own_echo() {
     Harness h;
     h.register_inverter();
@@ -241,6 +270,8 @@ int main() {
     RUN_TEST(test_execute_ack_and_nak);
     RUN_TEST(test_execute_timeout_reports_failure);
     RUN_TEST(test_rediscovers_when_inverter_goes_silent);
+    RUN_TEST(test_retries_a_missed_poll_at_once);
+    RUN_TEST(test_reregisters_after_missed_polls);
     RUN_TEST(test_ignores_own_echo);
     return UNITY_END();
 }

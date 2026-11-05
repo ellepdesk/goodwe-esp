@@ -23,18 +23,34 @@ void Bridge::port_opened() {
     cb.send = [this](const uint8_t* f, size_t n) {
         if (io_.send) io_.send(f, n);
     };
+    cb.on_frame = [this](const aa55::Frame& f) {
+        // Unexpected while registered; logged to find out why registrations get dropped.
+        if (f.ctrl == aa55::kRegister && master_->state() == aa55::Master::State::kRunning)
+            log("registration frame from 0x%02X while registered: func %02X, %u bytes", f.src,
+                f.func, f.len);
+    };
     cb.on_registered = [this](const char* s) {
+        limit_.on_registered();
+        // The same inverter again (it drops the registration now and then, and every
+        // morning): the retained discovery still holds, and announcing it again without
+        // the firmware would make HA set up every entity again.
+        if (serial_ == s) {
+            log("registered inverter %s again", s);
+            return;
+        }
         log("registered inverter %s at address 0x%02X", s, address_);
         serial_ = s;
         firmware_.clear();
         details_.clear();
         announced_ = subscribed_ = false;
-        limit_.on_registered();
     };
     cb.on_details = [this](const aa55::IdInfo* id, const aa55::Settings* st) {
+        std::string details = details_json(id, st);
+        std::string firmware = id ? id->firmware : firmware_;
+        if (details == details_ && firmware == firmware_) return;
         log("firmware %s, settings %s", id ? id->firmware : "not read", st ? "read" : "not read");
-        details_ = details_json(id, st);
-        if (id) firmware_ = id->firmware;
+        details_ = details;
+        firmware_ = firmware;
         announced_ = false;  // again, with sw_version and the details
     };
     cb.on_info = [this](const aa55::RunningInfo& info) {
@@ -121,7 +137,10 @@ void Bridge::message(const std::string& topic, const std::string& payload) {
 
 void Bridge::tick(uint32_t now_ms) {
     if (!master_) return;
+    bool registered = master_->state() == aa55::Master::State::kRunning;
     master_->tick(now_ms);
+    if (registered && master_->state() != aa55::Master::State::kRunning)
+        log("inverter stopped answering, registering again");
     if (!serial_.empty() && !announced_) announce();
     if (button_ && !master_->exec_pending()) {
         log("%s requested", button_ == aa55::kStop ? "stop" : "start");

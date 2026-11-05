@@ -30,6 +30,10 @@ public:
     static constexpr uint32_t kRetryMs = 2000;
     static constexpr uint32_t kReplyTimeoutMs = 2000;
     static constexpr uint32_t kOfflineMs = 30000;
+    // The GW3600-DS drops the registration every ~30 minutes and then ignores polls, so
+    // re-register after this many running-info polls in a row go unanswered. A missed poll
+    // is retried at once, so a dropped registration costs a few seconds, not a poll period.
+    static constexpr int kMaxMissedPolls = 2;
     static constexpr int kDetailAttempts = 3;
 
     Master(Callbacks cb, uint8_t inverter_address = 0x11, uint32_t poll_ms = 10000)
@@ -65,6 +69,7 @@ private:
     uint32_t last_send_ms_ = 0;
     uint32_t last_seen_ms_ = 0;
     uint32_t last_poll_ms_ = 0;
+    int missed_polls_ = 0;
     char serial_[17] = {};
 
     // Details read once after registration, before the first poll.

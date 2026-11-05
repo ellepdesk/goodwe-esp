@@ -77,6 +77,7 @@ void Master::handle(const Frame& f, uint32_t now_ms) {
         state_ = State::kRunning;
         last_seen_ms_ = now_ms;
         last_poll_ms_ = now_ms - poll_ms_;
+        missed_polls_ = 0;
         detail_ = Detail::kIdInfo;
         detail_attempts_ = 0;
         have_id_ = have_settings_ = false;
@@ -85,6 +86,7 @@ void Master::handle(const Frame& f, uint32_t now_ms) {
     }
     if (state_ != State::kRunning || f.src != address_) return;
     last_seen_ms_ = now_ms;
+    missed_polls_ = 0;
 
     if (awaiting_ == Awaiting::kInfo && f.ctrl == kRead &&
         f.func == (kRunningInfo | kResponse)) {
@@ -145,7 +147,15 @@ void Master::tick(uint32_t now_ms) {
             exec_pending_ = false;
             if (cb_.on_execute) cb_.on_execute(exec_func_, false);
         }
+        bool poll = awaiting_ == Awaiting::kInfo;
         awaiting_ = Awaiting::kNone;
+        if (poll) {
+            if (++missed_polls_ >= kMaxMissedPolls) {
+                restart(now_ms);
+                return;
+            }
+            last_poll_ms_ = now_ms - poll_ms_;
+        }
     }
     if (exec_pending_) {
         send(address_, kExecute, exec_func_, exec_data_, exec_len_);
