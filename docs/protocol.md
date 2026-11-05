@@ -156,6 +156,18 @@ So polling faster than once a second adds no information. The WiFi module upload
 ~11 s (or 8 minutes, depending on the server's interval reply), and `goodwe-mqtt` defaults
 to 10 s.
 
+## Dropped registration (GW3600-DS over USB, 2026-11-05)
+
+During the day the inverter forgets its registration every ~30 min 30 s and ignores polls
+from then on; discovery and address allocation work again straight away. The rhythm is the
+inverter's own: after a re-registration at 13:36 UTC the next drop still came at 13:49:56,
+on the ~30.5 min grid of the drops before it (08:45, 09:15, … 13:19). It sends nothing when
+it drops us (no registration frames arrive). In the morning it held the registration for
+two hours before the first drop.
+
+`aa55::Master` retries a missed poll at once and re-registers after two misses in a row,
+so a drop costs one poll (~20 s without data at the 10 s default).
+
 ## Firmware updater (not traced)
 
 EzExplorer has a firmware flasher ("Update Program" in the Inverter menu; window "Flash",
