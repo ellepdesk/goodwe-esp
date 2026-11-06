@@ -27,10 +27,12 @@ struct Sim {
     std::map<std::string, std::string> retained;
     std::vector<std::pair<std::string, std::string>> published;
     std::vector<std::string> subscribed;
+    std::vector<std::string> logs;
     std::vector<aa55::Frame> executed;  // execute frames the inverter received
     std::vector<std::vector<uint8_t>> replies;
     aa55::Parser parser;
     uint8_t address = 0;
+    bool off = false;  // answers nothing, as after sunset
     uint32_t now = 0;
     Bridge bridge;
 
@@ -49,6 +51,7 @@ struct Sim {
             if (retain) retained[t] = p;
         };
         io.subscribe = [this](const std::string& t) { subscribed.push_back(t); };
+        io.log = [this](const char* line) { logs.push_back(line); };
         io.send = [this](const uint8_t* f, size_t n) {
             for (size_t i = 0; i < n; i++)
                 if (parser.feed(f[i])) answer(parser.frame());
@@ -63,6 +66,7 @@ struct Sim {
     }
 
     void answer(const aa55::Frame& f) {
+        if (off) return;
         if (f.ctrl == 0x00 && f.func == 0x00 && !address) {
             reply(0x7F, 0x00, 0x80, (const uint8_t*)kSerial, 16);
         } else if (f.ctrl == 0x00 && f.func == 0x01) {
@@ -98,6 +102,12 @@ struct Sim {
     // MQTT delivery, including the echo of retained publishes to our own subscriptions.
     void deliver(const std::string& topic, const std::string& payload) {
         bridge.message(topic, payload);
+    }
+
+    size_t logged(const char* prefix) const {
+        size_t n = 0;
+        for (const auto& l : logs) n += l.compare(0, strlen(prefix), prefix) == 0;
+        return n;
     }
 
     size_t count(const std::string& topic) const {
@@ -230,6 +240,34 @@ void test_dropped_registration_is_quiet() {
     TEST_ASSERT_EQUAL(subscriptions, sim.subscribed.size());
 }
 
+void test_dropped_registration_is_traced() {
+    Sim sim;
+    sim.bridge.port_opened();
+    sim.run(3000);
+    TEST_ASSERT_EQUAL(0, sim.logged("trace"));
+
+    sim.address = 0;
+    sim.run(20000);
+    TEST_ASSERT_EQUAL(1, sim.logged("poll unanswered"));
+    TEST_ASSERT_TRUE(sim.logged("trace +") >= 4);  // remove, discovery, its reply, allocation
+    TEST_ASSERT_EQUAL(1, sim.logged("trace end: registered"));
+    size_t lines = sim.logs.size();
+    sim.run(20000);
+    TEST_ASSERT_EQUAL(lines, sim.logs.size());  // quiet again once registered
+}
+
+void test_trace_stops_when_the_inverter_stays_away() {
+    Sim sim;
+    sim.bridge.port_opened();
+    sim.run(3000);
+    sim.off = true;
+    sim.run(200000);
+    TEST_ASSERT_EQUAL(1, sim.logged("trace end: not registered"));
+    size_t lines = sim.logs.size();
+    sim.run(60000);
+    TEST_ASSERT_EQUAL(lines, sim.logs.size());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_registers_and_announces);
@@ -240,5 +278,7 @@ int main() {
     RUN_TEST(test_reconnect_reannounces);
     RUN_TEST(test_limit_survives_the_night);
     RUN_TEST(test_dropped_registration_is_quiet);
+    RUN_TEST(test_dropped_registration_is_traced);
+    RUN_TEST(test_trace_stops_when_the_inverter_stays_away);
     return UNITY_END();
 }

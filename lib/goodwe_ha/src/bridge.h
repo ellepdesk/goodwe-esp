@@ -51,6 +51,8 @@ private:
     void log(const char* fmt, ...) __attribute__((format(printf, 2, 3)));
     void announce();
     void on_execute(uint8_t func, bool ack);
+    void trace(const char* dir, uint8_t src, uint8_t dst, uint8_t ctrl, uint8_t func,
+               const uint8_t* data, uint8_t len);
 
     Config config_;
     Io io_;
@@ -66,6 +68,14 @@ private:
     // Outlives the port: the wanted limit must survive the inverter's nightly shutdown.
     PowerLimit limit_;
     uint8_t button_ = 0;  // aa55::kStop or kStart waiting for the bus
+
+    // Every frame from the first unanswered poll until registered again, to find out why
+    // the inverter drops the registration (and why getting it back sometimes takes 30 s).
+    static constexpr uint32_t kTraceMs = 120000;  // the inverter switching off for the night
+    uint32_t now_ = 0;
+    uint32_t registered_at_ = 0, last_reply_at_ = 0;
+    bool tracing_ = false;
+    uint32_t trace_start_ = 0, trace_checksum_errors_ = 0;
 };
 
 }  // namespace ha

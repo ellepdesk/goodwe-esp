@@ -48,6 +48,8 @@ public:
 
     State state() const { return state_; }
     bool exec_pending() const { return exec_pending_; }
+    int missed_polls() const { return missed_polls_; }
+    uint32_t checksum_errors() const { return parser_.checksum_errors(); }
     const char* serial() const { return serial_; }
 
 private:

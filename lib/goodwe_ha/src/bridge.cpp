@@ -2,6 +2,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <string.h>
 
 namespace ha {
 
@@ -21,9 +22,12 @@ void Bridge::log(const char* fmt, ...) {
 void Bridge::port_opened() {
     aa55::Master::Callbacks cb;
     cb.send = [this](const uint8_t* f, size_t n) {
+        if (tracing_ && n >= 9) trace("tx", f[2], f[3], f[4], f[5], f + 7, f[6]);
         if (io_.send) io_.send(f, n);
     };
     cb.on_frame = [this](const aa55::Frame& f) {
+        if (tracing_) trace("rx", f.src, f.dst, f.ctrl, f.func, f.data, f.len);
+        if (f.src == address_) last_reply_at_ = now_;
         // Unexpected while registered; logged to find out why registrations get dropped.
         if (f.ctrl == aa55::kRegister && master_->state() == aa55::Master::State::kRunning)
             log("registration frame from 0x%02X while registered: func %02X, %u bytes", f.src,
@@ -31,6 +35,13 @@ void Bridge::port_opened() {
     };
     cb.on_registered = [this](const char* s) {
         limit_.on_registered();
+        registered_at_ = now_;
+        if (tracing_) {
+            log("trace end: registered %u ms after the first missed poll, %u checksum errors",
+                unsigned(now_ - trace_start_),
+                unsigned(master_->checksum_errors() - trace_checksum_errors_));
+            tracing_ = false;
+        }
         // The same inverter again (it drops the registration now and then, and every
         // morning): the retained discovery still holds, and announcing it again without
         // the firmware would make HA set up every entity again.
@@ -64,15 +75,32 @@ void Bridge::port_opened() {
     log("inverter port open");
 }
 
+void Bridge::trace(const char* dir, uint8_t src, uint8_t dst, uint8_t ctrl, uint8_t func,
+                   const uint8_t* data, uint8_t len) {
+    if (now_ - trace_start_ > kTraceMs) {
+        log("trace end: not registered after %u s", unsigned(kTraceMs / 1000));
+        tracing_ = false;
+        return;
+    }
+    char hex[3 * 24 + 4] = "";
+    size_t shown = len < 24 ? len : 24;
+    for (size_t i = 0; i < shown; i++) snprintf(hex + 3 * i, 4, " %02X", data[i]);
+    if (shown < len) strcat(hex, " ..");
+    log("trace +%u ms %s %02X>%02X %02X/%02X len %u:%s", unsigned(now_ - trace_start_), dir,
+        src, dst, ctrl, func, len, hex);
+}
+
 void Bridge::port_closed() {
     if (!master_) return;
     master_.reset();
     button_ = 0;
+    tracing_ = false;
     log("inverter port closed");
 }
 
 void Bridge::feed(const uint8_t* bytes, size_t n, uint32_t now_ms) {
     if (!master_) return;
+    now_ = now_ms;
     for (size_t i = 0; i < n; i++) master_->feed(bytes[i], now_ms);
 }
 
@@ -137,8 +165,16 @@ void Bridge::message(const std::string& topic, const std::string& payload) {
 
 void Bridge::tick(uint32_t now_ms) {
     if (!master_) return;
+    now_ = now_ms;
     bool registered = master_->state() == aa55::Master::State::kRunning;
     master_->tick(now_ms);
+    if (!tracing_ && registered && master_->missed_polls() > 0) {
+        log("poll unanswered: registered %u s ago, last reply %u ms ago; tracing frames",
+            unsigned((now_ms - registered_at_) / 1000), unsigned(now_ms - last_reply_at_));
+        tracing_ = true;
+        trace_start_ = now_ms;
+        trace_checksum_errors_ = master_->checksum_errors();
+    }
     if (registered && master_->state() != aa55::Master::State::kRunning)
         log("inverter stopped answering, registering again");
     if (!serial_.empty() && !announced_) announce();
