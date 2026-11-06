@@ -161,12 +161,30 @@ to 10 s.
 During the day the inverter forgets its registration every ~30 min 30 s and ignores polls
 from then on; discovery and address allocation work again straight away. The rhythm is the
 inverter's own: after a re-registration at 13:36 UTC the next drop still came at 13:49:56,
-on the ~30.5 min grid of the drops before it (08:45, 09:15, … 13:19). It sends nothing when
-it drops us (no registration frames arrive). In the morning it held the registration for
+on the ~30.5 min grid of the drops before it (08:45, 09:15, … 13:19). In the morning it held the registration for
 two hours before the first drop.
 
-`aa55::Master` retries a missed poll at once and re-registers after two misses in a row,
-so a drop costs one poll (~20 s without data at the 10 s default).
+A frame trace of the drop at 09:47 UTC on 2026-11-06 (offsets from the first missed
+poll; the inverter had been registered for only 564 s, after a service restart):
+
+| Offset | Direction | Frame |
+|---|---|---|
+| −12 s | rx | last running-info reply |
+| 0 … +10 s | tx | poll retry, `00 02` remove registration, `00 00` discovery every 2 s: no reply at all |
+| +11.05 s | rx | our own `00 00` discovery frame echoed back (src 0x80), never seen otherwise |
+| +11.26 s | rx | `00 82` ACK to the remove registration sent 9 s earlier, then `00 80` with the serial |
+| +11.26 s | tx | `00 01` allocate address: no `00 81` within 2 s |
+| +13.3 s | tx/rx | remove registration, ACK after 137 ms |
+| +15.3 s | tx/rx | discovery, reply after 155 ms; allocate, confirmed after 225 ms |
+
+So the inverter isn't selectively dropping the registration: its communication side goes
+completely deaf for ~20 s, then answers with a burst of delayed replies (and an echo of
+our own frame) and has forgotten the registration, which looks like a periodic restart of
+the inverter's communication controller. The first allocation after it comes back gets
+lost; the second goes through. How long it stays deaf varies: recoveries took 4–30 s.
+
+`aa55::Master` retries a missed poll at once and re-registers after two misses in a row.
+A drop still costs ~20–40 s of data, because the inverter answers nothing for that long.
 
 ## Firmware updater (not traced)
 
