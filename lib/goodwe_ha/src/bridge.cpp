@@ -65,6 +65,11 @@ void Bridge::port_opened() {
         announced_ = false;  // again, with sw_version and the details
     };
     cb.on_info = [this](const aa55::RunningInfo& info) {
+        if (tracing_) {
+            log("trace end: answered again %u ms after the first missed poll",
+                unsigned(now_ - trace_start_));
+            tracing_ = false;
+        }
         io_.publish(state_topic(config_, serial_.c_str()), state_json(serial_.c_str(), info),
                     false);
         limit_.on_info(info);

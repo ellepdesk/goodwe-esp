@@ -33,6 +33,7 @@ struct Sim {
     aa55::Parser parser;
     uint8_t address = 0;
     bool off = false;  // answers nothing, as after sunset
+    int lose_polls = 0;  // running-info polls to leave unanswered
     uint32_t now = 0;
     Bridge bridge;
 
@@ -75,6 +76,7 @@ struct Sim {
         } else if (f.ctrl == 0x00 && f.func == 0x02) {
             address = 0;
         } else if (f.dst == address && f.ctrl == 0x01 && f.func == 0x01) {
+            if (lose_polls > 0 && lose_polls--) return;
             reply(address, 0x01, 0x81, kInfo, sizeof kInfo);
         } else if (f.dst == address && f.ctrl == 0x01 && f.func == 0x02) {
             std::string id = std::string("V1.16GW3600-DS") + std::string(17, ' ') + kSerial +
@@ -268,6 +270,20 @@ void test_trace_stops_when_the_inverter_stays_away() {
     TEST_ASSERT_EQUAL(lines, sim.logs.size());
 }
 
+void test_trace_ends_when_a_lost_poll_is_answered_on_retry() {
+    Sim sim;
+    sim.bridge.port_opened();
+    sim.run(3000);
+    sim.lose_polls = 1;
+    sim.run(15000);
+    TEST_ASSERT_EQUAL(1, sim.logged("poll unanswered"));
+    TEST_ASSERT_EQUAL(1, sim.logged("trace end: answered again"));
+    TEST_ASSERT_EQUAL(0, sim.logged("inverter stopped answering"));
+    size_t lines = sim.logs.size();
+    sim.run(30000);
+    TEST_ASSERT_EQUAL(lines, sim.logs.size());
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_registers_and_announces);
@@ -280,5 +296,6 @@ int main() {
     RUN_TEST(test_dropped_registration_is_quiet);
     RUN_TEST(test_dropped_registration_is_traced);
     RUN_TEST(test_trace_stops_when_the_inverter_stays_away);
+    RUN_TEST(test_trace_ends_when_a_lost_poll_is_answered_on_retry);
     return UNITY_END();
 }
