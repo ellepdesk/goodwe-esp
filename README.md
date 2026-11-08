@@ -12,12 +12,11 @@ and the A11 resumes: that is the rollback.
 
 ## Status
 
+- **ESP firmware** (`src/usb`, env `s3-usb`): running on the inverter since 2026-11-08.
+  Registration, polling, HA discovery and the power limit verified on the real inverter.
 - **Linux**: [`tools/host`](tools/host/README.md) has a CLI and `goodwe-mqtt`, a service
-  that already does what the firmware will do, from any Linux board on the inverter's USB
-  port. This proves the shared libraries on the real inverter first.
-- **ESP firmware** (`src/usb`, env `s3-usb`): written and compiling, not yet run on
-  hardware (the board is on its way). The A11 sniffer (`src/sniffer`) remains as a
-  fallback.
+  that does the same from any Linux board on the inverter's USB port. It proved the shared
+  libraries first and stays useful for experiments.
 
 `lib/aa55` (protocol, bus master), `lib/goodwe_ha` (HA discovery, control entities, and
 `ha::Bridge`, which ties them to the inverter) and `lib/status_led` are shared by both, so
@@ -27,12 +26,30 @@ the ESP firmware is only WiFi, MQTT, OTA and USB glue.
 pio test -e native     # library tests, including the bridge against a simulated inverter
 ```
 
-### Building the ESP firmware
+## Hardware
+
+- **Board**: dual-USB ESP32-S3 in the DevKitC-1 layout (the one in use is an N16R8 clone
+  marked "678AB V0.0.1"). With the module facing up, the left USB-C is the native port and
+  goes to the inverter; the right one ("COM", CH343 USB-serial) is for power, flashing and
+  logs.
+- **VBUS**: as host the S3 must put 5 V on the native port; the inverter's port supplies
+  none. On this board the native port's VBUS sits behind a diode; bridge the "USB-OTG"
+  pads on the back to connect it to the 5 V rail. "IN-OUT" on the front is for the 5Vin
+  pin; leave it open.
+- **Cable**: USB-C to USB-B ("printer cable"); the inverter's port is USB-B.
+- **LED**: the on-board WS2812 on GPIO48 shows the inverter's state (see `platformio.ini`).
+
+The inverter's USB port is a HID device `0084:0041`: full speed, one interface, a single
+interrupt IN endpoint `0x81` (32-byte packets) and no OUT endpoint, so frames go out as
+`SET_REPORT` control transfers (`CC 99 <len>` + frame, padded to 72 bytes). The firmware
+uses ESP-IDF's raw `usb_host` API from the Arduino core (2.0.17, IDF 4.4); no HID driver.
+
+### Building
 
 ```
 cp secrets.ini.example secrets.ini   # WiFi, MQTT broker, optional OTA password
 pio run -e s3-usb -t upload          # first time over the COM port
-pio device monitor                   # logs on the COM port
+pio device monitor                   # logs on the COM port (opening it resets the ESP)
 pio run -e s3-usb -t upload --upload-port goodwe-esp.local   # later, over WiFi (OTA)
 ```
 
@@ -40,75 +57,15 @@ Logs also go to MQTT topic `goodwe-esp/log`. Same entities as `goodwe-mqtt` with
 `--allow-control` (`-DALLOW_CONTROL=0` drops the control entities), so only one of the two
 should be on the inverter at a time.
 
-## Plan: USB host on the S3
+### Mounting
 
-Board: a dual-USB ESP32-S3 (DevKitC-1 layout). Its native USB-C port, the one marked "USB"
-or "OTG", runs as a USB host to the inverter's HID device `0084:0041`. The other USB-C
-port, marked "COM" or "UART", has a USB-serial bridge and stays free for power, flashing
-and logs. The C3 has no USB OTG controller, so it drops out.
+The board sits outside the inverter at the capped USB port; seal the open port and the
+board against the weather:
 
-1. **Descriptors** (recorded 2026-11-04 with `lsusb -v -d 0084:0041`): full speed, one
-   interface, a single interrupt IN endpoint `0x81` (32-byte packets, 1 ms) and **no OUT
-   endpoint**, so output reports go as `SET_REPORT` control transfers. Report descriptor
-   (27 bytes, vendor page `0xFF00`, no report IDs): 8-byte input, 72-byte output.
-   bMaxPacketSize0 8, self-powered.
-2. **Power.** As host the S3 must put 5 V on VBUS; the inverter's port supplies none. On
-   these boards the native port's VBUS is usually isolated by a diode; many clones have a
-   solder jumper (often marked "IN-OUT" or "USB-OTG") that connects it to the 5 V rail.
-   Close it, then power the board through the COM port from a 5 V supply at the inverter,
-   and measure 5 V on the native port's VBUS before plugging in the inverter. Cable: USB-C
-   to USB-B ("printer cable"); the inverter's port is USB-B.
-3. **USB transport** (`src/usb/usb_hid.cpp`, written). ESP-IDF's raw `usb_host` API, which ships with the current Arduino
-   core (2.0.17, IDF 4.4), so no HID driver is needed: open the device, claim interface 0,
-   keep an IN transfer on endpoint `0x81`, and send `CC 99 <len>` + frame, padded to
-   72 bytes, as a `SET_REPORT` (output, report ID 0) on the control pipe. Handle detach:
-   the DS powers off at night and the device disappears with it.
-4. **Firmware** (`src/usb/main.cpp`, written). The transport feeds `ha::Bridge`, exactly
-   as in `goodwe-mqtt`, plus WiFi, PubSubClient and ArduinoOTA. Optional status LED (`lib/status_led`, `-DSTATUS_LED_PIN`, see
-   `platformio.ini`): orange while waiting, green in Normal, red on a fault or error bit,
-   off without data; `s3-usb` sets GPIO48, the DevKitC-1's on-board LED (38 on v1.1).
-5. **Logs and updates** (written). Over the COM port (serial console and flashing) while on the
-   bench. Once mounted, use OTA, plus an MQTT log topic so the COM port needn't be
-   reachable.
-6. **Bench test, then mounting.** On the bench: flash, check the log for "inverter port
-   open" and registration with the NanoPi unplugged from the inverter. The board sits outside the inverter at the capped USB port. Seal the open port and the board against the weather.
-
-### Shopping list
-
-- Dual-USB ESP32-S3 board (DevKitC-1 layout: native "USB/OTG" port plus "COM" port)
-- USB-C to USB-B cable ("printer cable"), native port to the inverter
-- 5 V USB power supply at the inverter, into the COM port
 - M25×1.5 cable gland for the open USB port. Check the cap's thread first. Get one that
   seals a 4–5 mm cable (reducing insert) and whose bore passes the USB-C plug: the
   USB-B end stays in the inverter's socket, so thread the cable C end first from that side.
-- Weatherproof enclosure for the board
-
-## Fallback: A11 header sniffer
-
-`src/main.cpp` listens passively on the A11's UART. It's only needed if the USB route
-fails, e.g. to drive the inverter UART directly instead.
-
-```
-pio run -e c3 -t upload && pio device monitor
-```
-
-HF-A11 header: 2x7, **2 mm pitch**. Measure the pins on the carrier before connecting
-anything. The A11 is a 3.3 V part, but the manual does not say whether the pins tolerate 5 V.
-
-| A11 pin | Signal               | XIAO C3 | XIAO S3 |
-|---------|----------------------|---------|---------|
-| 1       | GND                  | GND     | GND     |
-| 3       | UART_TXD (A11 → inv) | GPIO3   | GPIO1   |
-| 4       | UART_RXD (inv → A11) | GPIO4   | GPIO2   |
-
-Pin numbers follow the High-Flying manual (pin 1 GND, pin 2 3.3 V, then 3/4 TXD/RXD).
-Find pin 1 on the carrier with a meter (continuity to the inverter's ground) rather than
-trusting the silkscreen. Power the XIAO from USB, not from pin 2. Never pull pin 3 up: it
-is a boot strap on the A11 with an internal 1 kΩ pull-down.
-
-Open questions for a sniff: is the line 9600 8N1 (`AA55_BAUD` in `platformio.ini`), does
-the A11 act as master (discovery, register, `01 01` polls), and what else does it send at
-startup?
+- Weatherproof enclosure for the board, and 5 V into the COM port.
 
 ## Protocol
 

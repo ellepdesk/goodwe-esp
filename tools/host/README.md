@@ -11,7 +11,7 @@ Both talk to the inverter over:
 
 - **USB HID**: the inverter's own USB port. Frames go out as `CC 99 <len>` + AA55 in an
   output report, per GoodWeUSBLogger.
-- **Serial**: a USB-UART adapter on the A11 header, or an RS485 adapter. Plain AA55.
+- **Serial**: an RS485 adapter, for GoodWe models with an RS485 port. Plain AA55.
 
 ## Build
 
