@@ -14,7 +14,7 @@
 #ifdef STATUS_LED_PIN
 #include <status_led.h>
 #ifndef STATUS_LED_BRIGHTNESS
-#define STATUS_LED_BRIGHTNESS 32
+#define STATUS_LED_BRIGHTNESS 8  // of 255; 32 is glaring on the DevKitC clone
 #endif
 #endif
 
