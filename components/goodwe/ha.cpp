@@ -1,0 +1,1 @@
+../../lib/goodwe_ha/src/ha.cpp

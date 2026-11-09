@@ -62,6 +62,29 @@ Logs also go to MQTT topic `goodwe-esp/log`. Same entities as `goodwe-mqtt` with
 `--allow-control` (`-DALLOW_CONTROL=0` drops the control entities), so only one of the two
 should be on the inverter at a time.
 
+### ESPHome
+
+`components/goodwe` is the same firmware as an [ESPHome](https://esphome.io) external
+component: the USB transport, `lib/aa55` and the `PowerLimit`/name helpers from
+`lib/goodwe_ha` are shared (symlinked), but entities go through the ESPHome API instead of
+MQTT discovery. [`esphome/goodwe.yaml`](esphome/goodwe.yaml) is a complete config for this
+board; any entity can be left out.
+
+```
+esphome run esphome/goodwe.yaml      # needs a secrets.yaml next to it
+```
+
+Differences from the MQTT firmware:
+
+- New entities under an ESPHome device; the MQTT unique IDs (shared with
+  `goodwe_logging_proxy`) and their history don't carry over.
+- The power limit as % and as W (`rated_power` set in the YAML: HA reads a number's
+  range once, so it can't come from the serial at runtime). The wanted limit is kept in
+  flash and re-sent after every registration; the states show the limit last acknowledged.
+- Live sensors go unknown 10 minutes after the last running info, like `expire_after`.
+- The status LED is plain YAML (a WS2812 light and an interval), same colours.
+- No frame tracing; logs go to the COM port and the ESPHome API.
+
 ### Mounting
 
 The board sits outside the inverter at the capped USB port; seal the open port and the

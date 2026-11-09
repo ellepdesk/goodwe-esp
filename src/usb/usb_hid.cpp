@@ -1,6 +1,6 @@
 #include "usb_hid.h"
 
-#include <Arduino.h>
+#include <esp_err.h>
 #include <string.h>
 
 bool UsbHid::begin(uint16_t vid, uint16_t pid) {

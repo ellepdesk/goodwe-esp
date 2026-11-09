@@ -1,0 +1,125 @@
+# ESPHome version of the firmware in src/usb, for an ESP32-S3 DevKitC-1 (N16R8) on the
+# inverter's USB port; see the README for the board and cable. Entities go through the
+# ESPHome API instead of MQTT discovery. Leave out any entity you don't want.
+esphome:
+  name: goodwe
+  friendly_name: GoodWe
+
+esp32:
+  variant: esp32s3
+  board: esp32-s3-devkitc-1
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+
+external_components:
+  - source: github://ellepdesk/goodwe-esp
+    components: [goodwe]
+
+logger:
+  # The native USB port is the USB host, so log over the COM port (UART0).
+  hardware_uart: UART0
+
+api:
+  encryption:
+    key: !secret api_key
+ota:
+  - platform: esphome
+    password: !secret ota_password
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+goodwe:
+  # poll_interval: 10s
+
+sensor:
+  - platform: goodwe
+    pv1_voltage: {name: DC Voltage String 1}
+    pv2_voltage: {name: DC Voltage String 2}
+    pv1_current: {name: DC Current String 1}
+    pv2_current: {name: DC Current String 2}
+    ac_voltage: {name: AC Voltage}
+    ac_current: {name: AC Current}
+    ac_frequency: {name: AC Frequency}
+    ac_power: {name: AC Power}
+    temperature: {name: Inverter Temperature}
+    bus_voltage: {name: DC Bus Voltage}
+    energy_total: {name: Total Generated Energy}
+    energy_daily: {name: Daily Generated Energy}
+    hours_total: {name: Operating Hours}
+    error_code:
+      name: Error Code
+      id: error_code
+      # Published with every running info; the LED goes off when it stops.
+      on_raw_value:
+        - lambda: id(last_info) = millis();
+    pv_start_voltage: {name: PV Start Voltage}
+    start_delay: {name: Start Delay}
+    vac_min: {name: Grid Voltage Min}
+    vac_max: {name: Grid Voltage Max}
+    fac_min: {name: Grid Frequency Min}
+    fac_max: {name: Grid Frequency Max}
+
+text_sensor:
+  - platform: goodwe
+    work_mode: {name: Work Mode, id: work_mode}
+    errors: {name: Errors}
+    firmware: {name: Firmware}
+    model: {name: Model}
+    serial: {name: Serial Number}
+    safety_country: {name: Safety Country}
+
+number:
+  - platform: goodwe
+    power_limit: {name: Power Limit}
+    power_limit_watts: {name: Power Limit (W), rated_power: 3600}
+
+button:
+  - platform: goodwe
+    stop: {name: Stop, disabled_by_default: true}
+    start: {name: Start, disabled_by_default: true}
+
+# Status LED, as in the MQTT firmware: orange while the inverter waits, green in Normal,
+# red on a fault or any error bit, off without running info for a minute (night, or
+# unplugged). Internal: the interval would override any change from HA.
+light:
+  - platform: esp32_rmt_led_strip
+    id: status
+    internal: true
+    pin: GPIO48
+    num_leds: 1
+    chipset: WS2812
+    rgb_order: GRB
+    gamma_correct: 1.0
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+
+globals:
+  - id: last_info
+    type: uint32_t
+    initial_value: "0"
+
+interval:
+  - interval: 2s
+    then:
+      - lambda: |-
+          // Of 1.0; 0.125 is glaring.
+          const float brightness = 8 / 255.0f;
+          auto off = [] {
+            if (id(status).remote_values.is_on()) {
+              auto call = id(status).turn_off();
+              call.perform();
+            }
+          };
+          if (id(last_info) == 0 || millis() - id(last_info) > 60000) return off();
+          float r = 1, g = 0, b = 0;  // fault, permanent fault, unknown, or an error bit
+          if (id(error_code).state == 0) {
+            const std::string &mode = id(work_mode).state;
+            if (mode == "Wait") { r = 1; g = 80 / 255.0f; }
+            else if (mode == "Normal") { r = 0; g = 1; }
+          }
+          auto call = id(status).turn_on();
+          call.set_rgb(r, g, b);
+          call.set_brightness(brightness);
+          call.perform();
