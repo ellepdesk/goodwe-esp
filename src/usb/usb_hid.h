@@ -20,6 +20,8 @@ public:
 
     // Sends CC 99 <len> + frame as one output report; false if not connected or busy.
     bool write(const uint8_t* frame, size_t len);
+    // Why the last write() failed.
+    const char* write_error() const { return write_error_; }
     // Bytes from input reports, in order.
     size_t read(uint8_t* buf, size_t size);
 
@@ -45,6 +47,7 @@ private:
     usb_transfer_t* in_ = nullptr;
     usb_transfer_t* out_ = nullptr;
     bool in_busy_ = false, out_busy_ = false;
+    const char* write_error_ = "";
 
     uint8_t rx_[512];
     size_t rx_head_ = 0, rx_tail_ = 0;

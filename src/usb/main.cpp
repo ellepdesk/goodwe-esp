@@ -44,12 +44,19 @@
 namespace {
 
 constexpr uint32_t kMqttRetryMs = 5000;
+// After sunset a SET_REPORT to the inverter can hang for good (seen 2026-11-08: every
+// later write failed until a reset in the morning), and a hung control transfer can't be
+// cancelled. A restart resets the bus and the inverter's USB chip with it. Not within
+// kMinUptimeMs of boot, so a wedge that comes back at night restarts at most that often.
+constexpr uint32_t kWriteFailRestartMs = 60000;
+constexpr uint32_t kMinUptimeMs = 600000;
 
 WiFiClient net;
 PubSubClient mqtt(net);
 UsbHid usb;
 ha::Bridge* bridge = nullptr;
 uint32_t last_mqtt_attempt = 0;
+uint32_t write_failing_since = 0;  // 0: the last write went out
 bool ota_started = false;
 
 #ifdef STATUS_LED_PIN
@@ -111,7 +118,15 @@ void setup() {
     };
     io.subscribe = [](const std::string& topic) { mqtt.subscribe(topic.c_str(), 1); };
     io.send = [](const uint8_t* f, size_t n) {
-        if (!usb.write(f, n)) log_line("usb write failed");
+        if (usb.write(f, n)) {
+            write_failing_since = 0;
+            return;
+        }
+        if (write_failing_since) return;
+        write_failing_since = millis() | 1;
+        char line[96];
+        snprintf(line, sizeof line, "usb write failed: %s", usb.write_error());
+        log_line(line);
     };
     io.log = log_line;
 #ifdef STATUS_LED_PIN
@@ -141,6 +156,14 @@ void loop() {
     usb.poll();
     if (usb.connected() && !bridge->port_open()) bridge->port_opened();
     if (!usb.connected() && bridge->port_open()) bridge->port_closed();
+    if (!bridge->port_open()) write_failing_since = 0;
+    if (write_failing_since && millis() - write_failing_since > kWriteFailRestartMs &&
+        millis() > kMinUptimeMs) {
+        log_line("usb writes failing for 60 s, restarting");
+        mqtt.disconnect();
+        delay(100);
+        ESP.restart();
+    }
 
     uint8_t buf[64];
     size_t n = usb.read(buf, sizeof buf);

@@ -53,6 +53,11 @@ pio device monitor                   # logs on the COM port (opening it resets t
 pio run -e s3-usb -t upload --upload-port goodwe-esp.local   # later, over WiFi (OTA)
 ```
 
+OTA has the ESP connect back to the sender, so the sender must be reachable from the ESP's
+network. Across a firewalled VLAN, copy `.pio/build/s3-usb/firmware.bin` and the core's
+`espota.py` to a host on the ESP's network and run
+`python3 espota.py -i <esp ip> -I <host ip> -f firmware.bin` there.
+
 Logs also go to MQTT topic `goodwe-esp/log`. Same entities as `goodwe-mqtt` with
 `--allow-control` (`-DALLOW_CONTROL=0` drops the control entities), so only one of the two
 should be on the inverter at a time.

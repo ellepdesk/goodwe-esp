@@ -113,7 +113,11 @@ void UsbHid::out_done(usb_transfer_t* t) {
 }
 
 bool UsbHid::write(const uint8_t* frame, size_t len) {
-    if (!connected() || out_busy_ || len + 3 > size_t(kOutReport)) return false;
+    if (!connected() || out_busy_ || len + 3 > size_t(kOutReport)) {
+        write_error_ = !connected() ? "not connected" : out_busy_ ? "previous report still busy"
+                                                                  : "frame too long";
+        return false;
+    }
     usb_setup_packet_t* setup = reinterpret_cast<usb_setup_packet_t*>(out_->data_buffer);
     setup->bmRequestType = 0x21;  // host to device, class, interface
     setup->bRequest = 0x09;       // SET_REPORT
@@ -127,7 +131,9 @@ bool UsbHid::write(const uint8_t* frame, size_t len) {
     report[2] = uint8_t(len);
     memcpy(report + 3, frame, len);
     out_->num_bytes = USB_SETUP_PACKET_SIZE + kOutReport;
-    out_busy_ = usb_host_transfer_submit_control(client_, out_) == ESP_OK;
+    esp_err_t err = usb_host_transfer_submit_control(client_, out_);
+    out_busy_ = err == ESP_OK;
+    if (!out_busy_) write_error_ = esp_err_to_name(err);
     return out_busy_;
 }
 
