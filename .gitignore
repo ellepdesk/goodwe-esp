@@ -4,3 +4,5 @@ tools/host/goodwe
 tools/host/goodwe-mqtt
 __pycache__/
 secrets.ini
+esphome/secrets.yaml
+esphome/.esphome/

@@ -27,9 +27,11 @@ from . import CONF_GOODWE_ID, HUB_SCHEMA, goodwe_ns
 SensorId = goodwe_ns.enum("SensorId", is_class=True)
 
 
-def _live(unit, device_class, decimals, **kw):
+# Explicit icons: HA would derive them from the device class, but ESPHome's web page doesn't.
+def _live(unit, device_class, decimals, icon, **kw):
     return sensor.sensor_schema(
         unit_of_measurement=unit,
+        icon=icon,
         device_class=device_class,
         accuracy_decimals=decimals,
         state_class=STATE_CLASS_MEASUREMENT,
@@ -37,9 +39,10 @@ def _live(unit, device_class, decimals, **kw):
     )
 
 
-def _setting(unit, device_class, decimals):
+def _setting(unit, device_class, decimals, icon):
     return sensor.sensor_schema(
         unit_of_measurement=unit,
+        icon=icon,
         device_class=device_class,
         accuracy_decimals=decimals,
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
@@ -47,33 +50,40 @@ def _setting(unit, device_class, decimals):
 
 
 SENSORS = {
-    "pv1_voltage": _live(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1),
-    "pv2_voltage": _live(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1),
-    "pv1_current": _live(UNIT_AMPERE, DEVICE_CLASS_CURRENT, 1),
-    "pv2_current": _live(UNIT_AMPERE, DEVICE_CLASS_CURRENT, 1),
-    "ac_voltage": _live(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1),
-    "ac_current": _live(UNIT_AMPERE, DEVICE_CLASS_CURRENT, 1),
-    "ac_frequency": _live(UNIT_HERTZ, DEVICE_CLASS_FREQUENCY, 2),
-    "ac_power": _live(UNIT_WATT, DEVICE_CLASS_POWER, 0),
-    "temperature": _live(UNIT_CELSIUS, DEVICE_CLASS_TEMPERATURE, 1),
+    "pv1_voltage": _live(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1, "mdi:solar-panel"),
+    "pv2_voltage": _live(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1, "mdi:solar-panel"),
+    "pv1_current": _live(UNIT_AMPERE, DEVICE_CLASS_CURRENT, 1, "mdi:current-dc"),
+    "pv2_current": _live(UNIT_AMPERE, DEVICE_CLASS_CURRENT, 1, "mdi:current-dc"),
+    "ac_voltage": _live(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1, "mdi:sine-wave"),
+    "ac_current": _live(UNIT_AMPERE, DEVICE_CLASS_CURRENT, 1, "mdi:current-ac"),
+    "ac_frequency": _live(UNIT_HERTZ, DEVICE_CLASS_FREQUENCY, 2, "mdi:waveform"),
+    "ac_power": _live(UNIT_WATT, DEVICE_CLASS_POWER, 0, "mdi:flash"),
+    "temperature": _live(UNIT_CELSIUS, DEVICE_CLASS_TEMPERATURE, 1, "mdi:thermometer"),
     # The DC bus, see docs/protocol.md.
     "bus_voltage": _live(
-        UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1, entity_category=ENTITY_CATEGORY_DIAGNOSTIC
+        UNIT_VOLT,
+        DEVICE_CLASS_VOLTAGE,
+        1,
+        "mdi:current-dc",
+        entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
     "energy_total": sensor.sensor_schema(
         unit_of_measurement=UNIT_KILOWATT_HOURS,
+        icon="mdi:solar-power-variant",
         device_class=DEVICE_CLASS_ENERGY,
         accuracy_decimals=1,
         state_class=STATE_CLASS_TOTAL_INCREASING,
     ),
     "energy_daily": sensor.sensor_schema(
         unit_of_measurement=UNIT_KILOWATT_HOURS,
+        icon="mdi:solar-power-variant",
         device_class=DEVICE_CLASS_ENERGY,
         accuracy_decimals=1,
         state_class=STATE_CLASS_TOTAL_INCREASING,
     ),
     "hours_total": sensor.sensor_schema(
         unit_of_measurement=UNIT_HOUR,
+        icon="mdi:timer-outline",
         device_class=DEVICE_CLASS_DURATION,
         accuracy_decimals=0,
         state_class=STATE_CLASS_TOTAL_INCREASING,
@@ -83,12 +93,12 @@ SENSORS = {
         icon="mdi:alert-circle-outline",
         entity_category=ENTITY_CATEGORY_DIAGNOSTIC,
     ),
-    "pv_start_voltage": _setting(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1),
-    "start_delay": _setting(UNIT_SECOND, DEVICE_CLASS_DURATION, 0),
-    "vac_min": _setting(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1),
-    "vac_max": _setting(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1),
-    "fac_min": _setting(UNIT_HERTZ, DEVICE_CLASS_FREQUENCY, 2),
-    "fac_max": _setting(UNIT_HERTZ, DEVICE_CLASS_FREQUENCY, 2),
+    "pv_start_voltage": _setting(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1, "mdi:solar-panel"),
+    "start_delay": _setting(UNIT_SECOND, DEVICE_CLASS_DURATION, 0, "mdi:timer-sand"),
+    "vac_min": _setting(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1, "mdi:sine-wave"),
+    "vac_max": _setting(UNIT_VOLT, DEVICE_CLASS_VOLTAGE, 1, "mdi:sine-wave"),
+    "fac_min": _setting(UNIT_HERTZ, DEVICE_CLASS_FREQUENCY, 2, "mdi:waveform"),
+    "fac_max": _setting(UNIT_HERTZ, DEVICE_CLASS_FREQUENCY, 2, "mdi:waveform"),
 }
 
 CONFIG_SCHEMA = HUB_SCHEMA.extend({cv.Optional(k): s for k, s in SENSORS.items()})
