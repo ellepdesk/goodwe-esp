@@ -9,6 +9,9 @@
 #ifdef USE_NUMBER
 #include "esphome/components/number/number.h"
 #endif
+#ifdef USE_BINARY_SENSOR
+#include "esphome/components/binary_sensor/binary_sensor.h"
+#endif
 
 #include "aa55.h"
 #include "ha.h"
@@ -64,6 +67,9 @@ public:
         rated_power_ = rated;
     }
 #endif
+#ifdef USE_BINARY_SENSOR
+    void set_registered_binary_sensor(binary_sensor::BinarySensor* s) { registered_sensor_ = s; }
+#endif
 
     // Kept in flash: the inverter can't report its limit and may forget it overnight, so it
     // is sent again after every registration.
@@ -87,6 +93,7 @@ protected:
     void publish(SensorId id, float value);
     void publish(TextId id, const std::string& value);
     void expire();
+    void publish_registered(bool registered);
 
     uint8_t address_ = 0x11;
     uint32_t poll_ms_ = 10000;
@@ -104,6 +111,9 @@ protected:
 #ifdef USE_NUMBER
     number::Number* power_limit_number_ = nullptr;
     number::Number* power_limit_watts_number_ = nullptr;
+#endif
+#ifdef USE_BINARY_SENSOR
+    binary_sensor::BinarySensor* registered_sensor_ = nullptr;
 #endif
     int rated_power_ = 0;  // W, for the watts number
 };

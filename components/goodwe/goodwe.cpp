@@ -67,6 +67,7 @@ void GoodWe::loop() {
         write_failing_since_ = 0;
         ESP_LOGI(TAG, "Inverter port closed");
     }
+    publish_registered(master_ && master_->state() == aa55::Master::State::kRunning);
     uint32_t now = millis();
     if (live_ && now - last_info_ > kStaleMs) expire();
     if (!master_) return;
@@ -178,6 +179,14 @@ void GoodWe::on_execute(uint8_t func, bool ack) {
 void GoodWe::expire() {
     live_ = false;
     for (SensorId id : kLive) publish(id, NAN);
+}
+
+void GoodWe::publish_registered(bool registered) {
+#ifdef USE_BINARY_SENSOR
+    if (registered_sensor_ && (!registered_sensor_->has_state() ||
+                               registered_sensor_->state != registered))
+        registered_sensor_->publish_state(registered);
+#endif
 }
 
 void GoodWe::publish(SensorId id, float value) {

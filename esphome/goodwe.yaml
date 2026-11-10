@@ -32,6 +32,9 @@ web_server:
   port: 80
   version: 3
 
+# Reset reason and uptime, to tell a crash from a watchdog restart.
+debug:
+
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
@@ -66,6 +69,8 @@ sensor:
     vac_max: {name: Grid Voltage Max}
     fac_min: {name: Grid Frequency Min}
     fac_max: {name: Grid Frequency Max}
+  - platform: uptime
+    name: Uptime
 
 text_sensor:
   - platform: goodwe
@@ -75,6 +80,12 @@ text_sensor:
     model: {name: Model}
     serial: {name: Serial Number}
     safety_country: {name: Safety Country}
+  - platform: debug
+    reset_reason: {name: Reset Reason}
+
+binary_sensor:
+  - platform: goodwe
+    registered: {name: Registered}
 
 number:
   - platform: goodwe
